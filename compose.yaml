@@ -1,0 +1,94 @@
+# LilyIV Ecosystem Docker Compose Configuration
+
+services:
+  # Lily-Core Application - Main chatbot service (C++)
+  lily-core:
+    image: nstut/lily-core
+    build: ./Lily-Core
+    ports:
+      - "8000:8000"
+      - "9002:9002"
+    env_file:
+      - .env
+    depends_on:
+      - web-scout
+      - tts-provider
+    networks:
+      - lily-network
+    restart: unless-stopped
+
+  # Web-Scout Application - Web search and MCP server
+  web-scout:
+    image: nstut/web-scout
+    build: ./Web-Scout
+    ports:
+      - "8001:8000"
+    env_file:
+      - ./Lily-Core/.env
+    environment:
+      - PORT=8000
+      - PYTHONPATH=/app/Web-Scout
+      - DEBUG=${DEBUG:-false}
+    networks:
+      - lily-network
+    restart: unless-stopped
+    volumes:
+      - web-scout-data:/app/data
+
+  # TTS-Provider Application - Text-to-Speech generation service
+  tts-provider:
+    image: nstut/tts-provider
+    build: ./TTS-Provider
+    ports:
+      - "8002:9000"
+    env_file:
+      - ./Web-Scout/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+      - DEBUG=${DEBUG:-false}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - lily-network
+    restart: unless-stopped
+    volumes:
+      - tts-provider-hf-cache:/app/huggingface_cache
+
+  # Echo Application - Speech-to-Text service with Whisper
+  echo:
+    image: nstut/echo
+    build: ./Echo
+    ports:
+      - "8003:8000"
+    env_file:
+      - ./TTS-Provider/.env
+    environment:
+      - PORT=8000
+      - PYTHONPATH=/app/Echo
+      - DEBUG=${DEBUG:-false}
+    networks:
+      - lily-network
+    restart: unless-stopped
+    volumes:
+      - echo-data:/app/data
+
+networks:
+  lily-network:
+    driver: bridge
+
+volumes:
+  # Data persistence for Web-Scout
+  web-scout-data:
+    driver: local
+  # HuggingFace cache persistence for TTS-Provider
+  tts-provider-hf-cache:
+    driver: local
+  # Data persistence for Echo
+  echo-data:
+    driver: local
