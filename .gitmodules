@@ -1,0 +1,15 @@
+[submodule "Lily-Core"]
+	path = Lily-Core
+	url = https://github.com/UpperMoon0/Lily-Core.git
+[submodule "Lily-UI"]
+	path = Lily-UI
+	url = https://github.com/UpperMoon0/Lily-UI.git
+[submodule "Web-Scout"]
+	path = Web-Scout
+	url = https://github.com/UpperMoon0/Web-Scout.git
+[submodule "Echo"]
+	path = Echo
+	url = https://github.com/UpperMoon0/Echo.git
+[submodule "TTS-Provider"]
+	path = TTS-Provider
+	url = https://github.com/UpperMoon0/TTS-Provider.git
