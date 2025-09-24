@@ -9,7 +9,7 @@ services:
       - "8000:8000"
       - "9002:9002"
     env_file:
-      - .env
+      - ./Lily-Core/.env
     depends_on:
       - web-scout
       - tts-provider
