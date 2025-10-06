@@ -12,8 +12,9 @@ The audio chat feature is built on a distributed microservices architecture with
 
 1.  **Lily-UI (Frontend)**
     *   React-based desktop application using the Tauri framework.
-    *   Handles user interface, audio capture, and playback.
+    *   Handles user interface and audio playback.
     *   Communicates with Lily-Core via Tauri commands and WebSocket for real-time data transfer.
+    *   Receives audio activity detection events from the Rust backend for UI feedback.
 
 2.  **Lily-Core (Backend)**
     *   A C++ application that orchestrates the conversation flow.
@@ -51,8 +52,9 @@ User → Lily-UI → WebSocket → Lily-Core → Echo (STT) → Lily-Core → Ag
 
 #### Technical Implementation
 
-*   **Audio Capture**: The `MediaRecorder` API captures audio in WebM format with the Opus codec.
-*   **Real-time Streaming**: Audio chunks are sent to `Lily-Core` via the `send_websocket_audio` Tauri command, which wraps the WebSocket communication.
+*   **Audio Capture**: Audio is captured using CPAL (Cross-Platform Audio Library) in the Rust backend for low-latency, cross-platform microphone access.
+*   **Real-time Streaming**: Audio data is processed in real-time and streamed to `Lily-Core` via WebSocket for forwarding to the `Echo` service.
+*   **Activity Detection**: RMS (Root Mean Square) level calculation is performed in the Rust backend to detect voice activity, with events sent to the UI for visual feedback.
 *   **Backend Forwarding**: `Lily-Core` receives the binary audio data and forwards it to the `Echo` service's `/ws/transcribe` WebSocket endpoint.
 *   **Transcription**: The `Echo` service uses the Whisper model for real-time transcription and sends the transcribed text back to `Lily-Core`.
 *   **Agent Processing**: The transcribed text is processed through the agent loop for response generation.
@@ -79,22 +81,48 @@ User → Lily-UI → WebSocket → Lily-Core → Echo (STT) → Lily-Core → Ag
 *   A toggle button to enable or disable the continuous conversation mode.
 *   Visual feedback when in conversation mode.
 *   Audio activity detection to automatically start and stop recording.
+*   Live transcription display showing interim results as the user speaks.
 
 #### Technical Implementation
 
-*   **Continuous Capture**: The `MediaRecorder` continuously captures audio while in conversation mode.
-*   **Real-time Analysis**: The Web Audio API is used for real-time audio activity detection, providing visual feedback to the user.
+*   **Continuous Capture**: CPAL continuously captures audio while in conversation mode.
+*   **Real-time Analysis**: RMS level calculation in the Rust backend provides real-time audio activity detection, with visual feedback sent to the UI.
+*   **Two-Stage Silence Detection**: The `Echo` service implements intelligent silence detection with two thresholds:
+    *   **Short Pause (0.7s)**: Triggers interim transcription for live feedback in the UI
+    *   **Long Pause (1.5s)**: Triggers final transcription and sends the complete message to the agent loop
 *   **Streaming Transcription**: Audio chunks are continuously streamed to the `Echo` service for transcription, allowing for a more natural, hands-free conversation.
 *   **Context Management**: The agent loop maintains the conversation's context, ensuring that the back-and-forth dialogue is coherent and context-aware.
+
+### 4. Silence Detection Mechanism
+
+#### Overview
+
+The audio chat feature uses a sophisticated two-stage silence detection system to determine when a user has finished speaking. This prevents premature cut-offs during natural speech patterns like pauses and stutters while still providing responsive conversation flow.
+
+```
+User Speaking → Short Pause (0.7s) → Interim Transcription → Long Pause (1.5s) → Final Transcription → Agent Processing
+     ↓              ↓                        ↓                        ↓                        ↓
+  Audio Input    UI Update               Live Display            Message Sent            Response Generated
+```
+
+#### Technical Implementation
+
+*   **RMS Level Monitoring**: Each audio chunk is analyzed for RMS (Root Mean Square) level to detect silence vs. speech.
+*   **Silence Threshold**: Audio below 0.01 RMS is considered silence.
+*   **Two-Stage Detection**:
+    *   **Interim Transcription**: After 0.7 seconds of silence, sends interim transcription to UI for live feedback.
+    *   **Final Transcription**: After 1.5 seconds of silence, sends final transcription to agent loop for processing.
+*   **Configurable Parameters**: Silence durations and thresholds can be adjusted via environment variables.
+*   **State Management**: Tracks silence start time and prevents duplicate interim transcriptions.
 
 ## Data Flow
 
 ### Audio Input Flow
 
 1.  **User Action**: The user clicks the microphone button or activates conversation mode in `Lily-UI`.
-2.  **Microphone Access**: `Lily-UI` requests microphone access using the `MediaDevices` API.
-3.  **Audio Capture**: Audio is captured using the `MediaRecorder` API, with 1-second timeslices to create manageable chunks.
-4.  **WebSocket Streaming**: Each audio chunk is sent to `Lily-Core` via the `send_websocket_audio` Tauri command, which sends the binary data over WebSocket.
+2.  **Microphone Access**: The Rust backend requests microphone access using CPAL for cross-platform audio input.
+3.  **Audio Capture**: Audio is captured continuously using CPAL in the Rust backend, with real-time RMS level calculation for activity detection.
+4.  **WebSocket Streaming**: Audio data is streamed to `Lily-Core` via WebSocket for forwarding to the `Echo` service.
 5.  **Backend Forwarding**: `Lily-Core` receives the audio data and forwards it to the `Echo` service's `/ws/transcribe` endpoint.
 6.  **Transcription**: The `Echo` service uses Whisper to transcribe the audio and sends the text back to `Lily-Core`.
 7.  **Agent Processing**: The transcribed text is processed by the agent loop to generate a response.
@@ -119,6 +147,11 @@ User → Lily-UI → WebSocket → Lily-Core → Echo (STT) → Lily-Core → Ag
 ### Audio Device Settings
 - Input device selection (microphone)
 - Output device selection (speakers/headphones)
+
+### Silence Detection Settings
+- Short pause duration (default: 0.7 seconds) - Controls interim transcription timing
+- Long pause duration (default: 1.5 seconds) - Controls final transcription timing
+- Silence threshold (default: 0.01 RMS) - Audio level below which is considered silence
 
 ## Error Handling
 
@@ -159,10 +192,10 @@ User → Lily-UI → WebSocket → Lily-Core → Echo (STT) → Lily-Core → Ag
 ## Future Enhancements
 
 ### Planned Features
-- Voice activity detection improvements
 - Noise reduction and audio enhancement
 - Multi-language support expansion
 - Custom voice training capabilities
+- Voice activity detection refinements (adaptive thresholds, environmental noise compensation)
 
 ### Technical Improvements
 - Better integration with streaming APIs
@@ -183,7 +216,7 @@ User → Lily-UI → WebSocket → Lily-Core → Echo (STT) → Lily-Core → Ag
 - **FastAPI**: For the Python services in `Echo` and `TTS-Provider`.
 - **Reqwest**: For making HTTP requests in the Tauri application.
 - **Serde**: For serialization and deserialization in Rust.
-- **Web Audio API**: For real-time audio analysis in the browser.
+- **CPAL**: For cross-platform audio capture and processing in the Rust backend.
 
 ## Testing Considerations
 
@@ -200,7 +233,7 @@ User → Lily-UI → WebSocket → Lily-Core → Echo (STT) → Lily-Core → Ag
 
 ### Compatibility Testing
 - Cross-platform audio device support
-- Browser compatibility for Web Audio APIs
+- Cross-platform audio device compatibility with CPAL
 - Different audio format handling
 
 ## Deployment Considerations
