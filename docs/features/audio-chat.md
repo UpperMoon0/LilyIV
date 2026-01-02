@@ -55,9 +55,9 @@ User → Lily-UI → WebSocket → Lily-Core → Echo (STT) → Lily-Core → Ag
 *   **Audio Capture**: Audio is captured using CPAL (Cross-Platform Audio Library) in the Rust backend for low-latency, cross-platform microphone access.
 *   **Real-time Streaming**: Audio data is processed in real-time and streamed to `Lily-Core` via WebSocket for forwarding to the `Echo` service.
 *   **Activity Detection**: RMS (Root Mean Square) level calculation is performed in the Rust backend to detect voice activity, with events sent to the UI for visual feedback.
-*   **Backend Forwarding**: `Lily-Core` receives the binary audio data and forwards it to the `Echo` service's `/ws/transcribe` WebSocket endpoint.
-*   **Transcription**: The `Echo` service uses the Whisper model for real-time transcription and sends the transcribed text back to `Lily-Core`.
-*   **Agent Processing**: The transcribed text is processed through the agent loop for response generation.
+*   **Backend Forwarding**: `Lily-Core` receives the binary audio data and forwards it to the `Echo` service's `/ws/transcribe/{client_id}` WebSocket endpoint.
+*   **Transcription**: The `Echo` service uses the Whisper model for real-time transcription and sends the transcribed text back to `Lily-Core`, including the `client_id` for proper routing.
+*   **UI Update**: `Lily-Core` forwards the transcription to the corresponding `Lily-UI` client, which then populates the message bar.
 
 ### 2. Audio Output (Text-to-Speech)
 
