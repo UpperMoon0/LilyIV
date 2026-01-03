@@ -13,3 +13,6 @@
 [submodule "TTS-Provider"]
 	path = TTS-Provider
 	url = https://github.com/UpperMoon0/TTS-Provider.git
+[submodule "Lily-Admin-UI"]
+	path = Lily-Admin-UI
+	url = https://github.com/UpperMoon0/Lily-Admin-UI.git
