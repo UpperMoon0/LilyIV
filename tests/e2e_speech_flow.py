@@ -21,7 +21,7 @@ async def run_test():
     try:
         # 1. Connect to Lily-Core
         async with websockets.connect(f"{LILY_CORE_URL}") as websocket:
-            print("✅ Connected to Lily-Core WebSocket")
+            print("Connected to Lily-Core WebSocket")
 
             # 2. Wait for initial status/welcome messages if any
             # (Adjust based on actual Lily-Core protocol if it sends immediate messages)
@@ -38,20 +38,20 @@ async def run_test():
                 # Transcribe check
                 print("Checking Echo Transcribe via HTTP...")
                 files = {'file': ('test.mp3', open(SAMPLE_AUDIO_PATH, 'rb'), 'audio/mpeg')}
-                resp = requests.post("http://echo:8000/transcribe", files=files, timeout=30)
+                resp = requests.post("http://echo:8000/v1/audio/transcriptions", files=files, timeout=30)
                 print(f"Echo Transcribe Result: {resp.status_code} {resp.text}")
                 
                  # WebSocket Check
                 print("Checking Echo WebSocket directly...")
                 try:
                     async with websockets.connect("ws://echo:8000/ws/transcribe") as ws_echo:
-                        print("✅ Direct connection to Echo WebSocket SUCCEEDED")
+                        print("Direct connection to Echo WebSocket SUCCEEDED")
                         await ws_echo.close()
                 except Exception as e:
-                    print(f"❌ Direct connection to Echo WebSocket FAILED: {e}")
+                    print(f"Direct connection to Echo WebSocket FAILED: {e}")
                     
             except Exception as e:
-                print(f"⚠️ Echo HTTP/WS Check Failed: {e}")
+                print(f"Echo HTTP/WS Check Failed: {e}")
 
             # Convert MP3 to PCM (16kHz, 16-bit, Mono)
             import subprocess
@@ -81,7 +81,7 @@ async def run_test():
 
  
             
-            print("✅ Audio streaming complete. Waiting for transcription...")
+            print("Audio streaming complete. Waiting for transcription...")
 
             # 5. Listen for Transcription Response
             # We expect a JSON message with "transcription"
@@ -101,25 +101,25 @@ async def run_test():
                         
                         if data.get("type") == "final":
                             transcript_text = data.get("text", "").lower()
-                            print(f"✅ Final Transcription Received: '{transcript_text}'")
+                            print(f"Final Transcription Received: '{transcript_text}'")
                             
                             # Assertion
                             if "hello world" in transcript_text or "hello" in transcript_text:
-                                print("🎉 SUCCESS: Transcription matches expected content!")
+                                print("SUCCESS: Transcription matches expected content!")
                                 return
                             else:
-                                print(f"❌ FAILURE: Unexpected transcript content. Expected 'hello world'.")
+                                print(f"FAILURE: Unexpected transcript content. Expected 'hello world'.")
                                 sys.exit(1)
                                 
                 except asyncio.TimeoutError:
-                    print("⚠️ Timeout waiting for message chunk...")
+                    print("Timeout waiting for message chunk...")
                     continue
-            
-            print("❌ TIMEOUT: Did not receive final transcription in time.")
+
+            print("TIMEOUT: Did not receive final transcription in time.")
             sys.exit(1)
 
     except Exception as e:
-        print(f"❌ TEST ERROR: {e}")
+        print(f"TEST ERROR: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
