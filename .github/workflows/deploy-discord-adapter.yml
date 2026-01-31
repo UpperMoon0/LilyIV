@@ -1,0 +1,41 @@
+name: Deploy Lily-Discord-Adapter
+
+on:
+  repository_dispatch:
+    types: [lily-discord-adapter-pushed]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Docker image tag to deploy'
+        required: false
+        default: 'latest'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Only run if push was to main branch or manual dispatch
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.client_payload.ref == 'refs/heads/main' }}
+
+    steps:
+    - name: Deploy to VPS
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USERNAME }}
+        password: ${{ secrets.VPS_PASSWORD }}
+        port: 22
+        timeout: 60s
+        script: |
+          cd /root/LilyIV
+
+          # Update .env file with required environment variables
+          echo "DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }}" > Lily-Discord-Adapter/.env
+          echo "CONSUL_HTTP_ADDR=${{ secrets.CONSUL_HTTP_ADDR }}" >> Lily-Discord-Adapter/.env
+          echo "LILY_CORE_WS_URL=${{ secrets.LILY_CORE_WS_URL }}" >> Lily-Discord-Adapter/.env
+          echo "LILY_CORE_HTTP_URL=${{ secrets.LILY_CORE_HTTP_URL }}" >> Lily-Discord-Adapter/.env
+
+          # Pull latest image
+          docker pull nstut/lily-discord-adapter:${{ github.event.inputs.image_tag || 'latest' }}
+
+          # Restart only lily-discord-adapter service
+          docker compose -f docker-compose.prod.yml up -d --no-deps lily-discord-adapter

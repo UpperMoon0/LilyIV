@@ -1,0 +1,39 @@
+name: Deploy Lily-Core
+
+on:
+  repository_dispatch:
+    types: [lily-core-pushed]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Docker image tag to deploy'
+        required: false
+        default: 'latest'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Only run if push was to main branch or manual dispatch
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.client_payload.ref == 'refs/heads/main' }}
+
+    steps:
+    - name: Deploy to VPS
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USERNAME }}
+        password: ${{ secrets.VPS_PASSWORD }}
+        port: 22
+        timeout: 60s
+        script: |
+          cd /root/LilyIV
+
+          # Update .env file with required environment variables
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > Lily-Core/.env
+          echo "CONSUL_HTTP_ADDR=${{ secrets.CONSUL_HTTP_ADDR }}" >> Lily-Core/.env
+
+          # Pull latest image
+          docker pull nstut/lily-core:${{ github.event.inputs.image_tag || 'latest' }}
+
+          # Restart only lily-core service
+          docker compose -f docker-compose.prod.yml up -d --no-deps lily-core

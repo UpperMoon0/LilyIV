@@ -1,4 +1,5 @@
 # LilyIV Ecosystem Docker Compose Configuration
+name: lily
 
 services:
   # Lily-Core Application - Main chatbot service (C++)

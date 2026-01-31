@@ -1,11 +1,14 @@
-# Docker Compose for Lily-Core and Lily-Discord-Adapter
+# Docker Compose for Lily-Core and Lily-Discord-Adapter (Production)
 # Uses external nstut-network for connectivity
+# Pulls images from Docker Hub instead of building locally
+name: lily
 
 services:
   # Lily-Core Application - Main chatbot service (C++)
   lily-core:
-    image: nstut/lily-core
-    build: ./Lily-Core
+    image: nstut/lily-core:latest
+    container_name: lily-core
+    restart: unless-stopped
     ports:
       - "8000:8000"
       - "9002:9002"
@@ -14,35 +17,38 @@ services:
     networks:
       nstut-network:
         ipv4_address: 172.28.0.10
-    environment:
-      - CONSUL_HTTP_ADDR=consul:8500
-    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lily-core.rule=Host(`lily-core.nstut.cloud`)"
+      - "traefik.http.routers.lily-core.entrypoints=websecure"
+      - "traefik.http.routers.lily-core.tls.certresolver=myresolver"
+      - "traefik.http.services.lily-core.loadbalancer.server.port=8000"
 
   # Lily-Discord-Adapter - Discord bot adapter for Lily-Core
+  # Note: No Traefik config - Discord adapter communicates directly with Discord API
   lily-discord-adapter:
-    image: nstut/lily-discord-adapter
-    build: ./Lily-Discord-Adapter
+    image: nstut/lily-discord-adapter:latest
+    container_name: lily-discord-adapter
+    restart: unless-stopped
     ports:
       - "8004:8004"
     env_file:
       - ./Lily-Discord-Adapter/.env
-    networks:
-      nstut-network:
-        ipv4_address: 172.28.0.20
     environment:
       - PYTHONUNBUFFERED=1
       - PORT=8004
-      - PYTHONPATH=/app/Lily-Discord-Adapter
-      - LILY_CORE_URL=ws://lily-core:9002
-      - CONSUL_HTTP_ADDR=consul:8500
+    networks:
+      nstut-network:
+        ipv4_address: 172.28.0.20
     depends_on:
       - lily-core
       - consul
-    restart: unless-stopped
 
   # Consul - Service Registry
   consul:
     image: hashicorp/consul:latest
+    container_name: consul
+    restart: unless-stopped
     ports:
       - "8500:8500"
       - "8600:8600/udp"
@@ -50,7 +56,6 @@ services:
       nstut-network:
         ipv4_address: 172.28.0.100
     command: "agent -dev -client '0.0.0.0'"
-    restart: unless-stopped
 
 networks:
   nstut-network:
