@@ -10,6 +10,38 @@ LILY_CORE_URL = os.environ.get("LILY_CORE_URL", "ws://localhost:8000")
 SAMPLE_AUDIO_PATH = os.path.join(os.path.dirname(__file__), "samples", "hello_world.mp3")
 CHUNK_SIZE = 32768  # 32KB chunks
 
+def wait_for_services():
+    """Wait for all required services to be healthy before running tests."""
+    import requests
+    
+    services = [
+        ("Echo", "http://echo:8000/health"),
+        ("Lily-Core", "http://lily-core:8000/health"),
+    ]
+    
+    max_retries = 30  # 30 retries * 2 seconds = 60 seconds max wait
+    retry_interval = 2
+    
+    for service_name, health_url in services:
+        print(f"Waiting for {service_name} to be ready...")
+        for attempt in range(max_retries):
+            try:
+                resp = requests.get(health_url, timeout=5)
+                if resp.status_code == 200:
+                    print(f"✓ {service_name} is healthy: {resp.text}")
+                    break
+            except Exception as e:
+                pass
+            
+            if attempt < max_retries - 1:
+                print(f"  {service_name} not ready, retrying in {retry_interval}s... ({attempt + 1}/{max_retries})")
+                time.sleep(retry_interval)
+        else:
+            print(f"✗ {service_name} failed to become healthy after {max_retries * retry_interval}s")
+            sys.exit(1)
+    
+    print("All services are healthy!")
+
 async def run_test():
     print(f"Testing Flow: TestScript -> {LILY_CORE_URL} -> Echo -> Response")
     print(f"Using Audio File: {SAMPLE_AUDIO_PATH}")
@@ -18,40 +50,29 @@ async def run_test():
         print(f"Error: Audio file not found at {SAMPLE_AUDIO_PATH}")
         sys.exit(1)
 
+    # Wait for services to be ready first
+    import requests
+    wait_for_services()
+
     try:
         # 1. Connect to Lily-Core
         async with websockets.connect(f"{LILY_CORE_URL}") as websocket:
             print("Connected to Lily-Core WebSocket")
 
-            # 2. Wait for initial status/welcome messages if any
-            # (Adjust based on actual Lily-Core protocol if it sends immediate messages)
+            # 2. Transcribe sanity check
+            print("Checking Echo Transcribe via HTTP...")
+            files = {'file': ('test.mp3', open(SAMPLE_AUDIO_PATH, 'rb'), 'audio/mpeg')}
+            resp = requests.post("http://echo:8000/v1/audio/transcriptions", files=files, timeout=30)
+            print(f"Echo Transcribe Result: {resp.status_code} {resp.text}")
             
-            # 3. Simulate "Start Recording" or just stream audio?
-            # Sanity Check: Verify Echo is alive via HTTP
-            import requests
+            # 3. WebSocket Check
+            print("Checking Echo WebSocket directly...")
             try:
-                print("Checking Echo health via HTTP...")
-                # Note: internal docker name is 'echo'
-                resp = requests.get("http://echo:8000/health", timeout=5)
-                print(f"Echo Health: {resp.status_code} {resp.text}")
-                
-                # Transcribe check
-                print("Checking Echo Transcribe via HTTP...")
-                files = {'file': ('test.mp3', open(SAMPLE_AUDIO_PATH, 'rb'), 'audio/mpeg')}
-                resp = requests.post("http://echo:8000/v1/audio/transcriptions", files=files, timeout=30)
-                print(f"Echo Transcribe Result: {resp.status_code} {resp.text}")
-                
-                 # WebSocket Check
-                print("Checking Echo WebSocket directly...")
-                try:
-                    async with websockets.connect("ws://echo:8000/ws/transcribe") as ws_echo:
-                        print("Direct connection to Echo WebSocket SUCCEEDED")
-                        await ws_echo.close()
-                except Exception as e:
-                    print(f"Direct connection to Echo WebSocket FAILED: {e}")
-                    
+                async with websockets.connect("ws://echo:8000/ws/transcribe") as ws_echo:
+                    print("Direct connection to Echo WebSocket SUCCEEDED")
+                    await ws_echo.close()
             except Exception as e:
-                print(f"Echo HTTP/WS Check Failed: {e}")
+                print(f"Direct connection to Echo WebSocket FAILED: {e}")
 
             # Convert MP3 to PCM (16kHz, 16-bit, Mono)
             import subprocess
