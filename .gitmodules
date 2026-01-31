@@ -16,3 +16,6 @@
 [submodule "Lily-Admin-UI"]
 	path = Lily-Admin-UI
 	url = https://github.com/UpperMoon0/Lily-Admin-UI.git
+[submodule "Lily-Discord-Adapter"]
+	path = Lily-Discord-Adapter
+	url = https://github.com/UpperMoon0/Lily-Discord-Adapter.git
