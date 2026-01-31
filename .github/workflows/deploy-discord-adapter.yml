@@ -28,6 +28,9 @@ jobs:
         script: |
           cd /root/LilyIV
 
+          # Create directory structure for .env files
+          mkdir -p Lily-Core Lily-Discord-Adapter
+
           # Update .env file with required environment variables
           echo "DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }}" > Lily-Discord-Adapter/.env
           echo "CONSUL_HTTP_ADDR=${{ secrets.CONSUL_HTTP_ADDR }}" >> Lily-Discord-Adapter/.env

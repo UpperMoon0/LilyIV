@@ -24,9 +24,12 @@ jobs:
         username: ${{ secrets.VPS_USERNAME }}
         password: ${{ secrets.VPS_PASSWORD }}
         port: 22
-        timeout: 60s
+        timeout: 90s
         script: |
           cd /root/LilyIV
+
+          # Create directory structure for .env files
+          mkdir -p Lily-Core Lily-Discord-Adapter
 
           # Update .env file with required environment variables
           echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > Lily-Core/.env
