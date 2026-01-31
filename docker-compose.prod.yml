@@ -16,7 +16,7 @@ services:
       - ./Lily-Core/.env
     networks:
       nstut-network:
-        ipv4_address: 172.28.0.10
+        ipv4_address: 172.18.0.10
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.lily-core.rule=Host(`lily-core.nstut.cloud`)"
@@ -39,7 +39,7 @@ services:
       - PORT=8004
     networks:
       nstut-network:
-        ipv4_address: 172.28.0.20
+        ipv4_address: 172.18.0.20
     depends_on:
       - lily-core
       - consul
@@ -54,7 +54,7 @@ services:
       - "8600:8600/udp"
     networks:
       nstut-network:
-        ipv4_address: 172.28.0.100
+        ipv4_address: 172.18.0.100
     command: "agent -dev -client '0.0.0.0'"
 
 networks:
