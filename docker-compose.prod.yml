@@ -58,15 +58,23 @@ services:
     command: "agent -dev -client '0.0.0.0' -ui"
     labels:
       - "traefik.enable=true"
+      # CORS Middleware - Allow requests from Lily Admin UI
+      - "traefik.http.middlewares.consul-cors.headers.accesscontrolallowmethods=GET,OPTIONS,PUT"
+      - "traefik.http.middlewares.consul-cors.headers.accesscontrolallowheaders=*"
+      - "traefik.http.middlewares.consul-cors.headers.accesscontrolalloworiginlist=https://lily-admin-ui.vercel.app"
+      - "traefik.http.middlewares.consul-cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.consul-cors.headers.addvaryheader=true"
       # HTTP API (port 8500)
       - "traefik.http.routers.consul-api.rule=Host(`consul-api.nstut.cloud`)"
       - "traefik.http.routers.consul-api.entrypoints=websecure"
       - "traefik.http.routers.consul-api.tls.certresolver=myresolver"
+      - "traefik.http.routers.consul-api.middlewares=consul-cors"
       - "traefik.http.services.consul-api.loadbalancer.server.port=8500"
       # UI Dashboard (port 8500 - same port, different router)
       - "traefik.http.routers.consul-ui.rule=Host(`consul.nstut.cloud`)"
       - "traefik.http.routers.consul-ui.entrypoints=websecure"
       - "traefik.http.routers.consul-ui.tls.certresolver=myresolver"
+      - "traefik.http.routers.consul-ui.middlewares=consul-cors"
       - "traefik.http.services.consul-ui.loadbalancer.server.port=8500"
 
 networks:
