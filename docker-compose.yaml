@@ -104,7 +104,6 @@ services:
       - PYTHONUNBUFFERED=1
       - PORT=8004
       - PYTHONPATH=/app/Lily-Discord-Adapter
-      - LILY_CORE_URL=ws://lily-core:9002
       - CONSUL_HTTP_ADDR=consul:8500
     depends_on:
       - lily-core
@@ -124,9 +123,6 @@ services:
     depends_on:
       - lily-core
       - echo
-    environment:
-      - LILY_CORE_URL=ws://lily-core:9002
-
     networks:
       - lily-network
 

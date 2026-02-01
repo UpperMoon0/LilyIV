@@ -55,7 +55,19 @@ services:
     networks:
       nstut-network:
         ipv4_address: 172.18.0.100
-    command: "agent -dev -client '0.0.0.0'"
+    command: "agent -dev -client '0.0.0.0' -ui"
+    labels:
+      - "traefik.enable=true"
+      # HTTP API (port 8500)
+      - "traefik.http.routers.consul-api.rule=Host(`consul-api.nstut.cloud`)"
+      - "traefik.http.routers.consul-api.entrypoints=websecure"
+      - "traefik.http.routers.consul-api.tls.certresolver=myresolver"
+      - "traefik.http.services.consul-api.loadbalancer.server.port=8500"
+      # UI Dashboard (port 8500 - same port, different router)
+      - "traefik.http.routers.consul-ui.rule=Host(`consul.nstut.cloud`)"
+      - "traefik.http.routers.consul-ui.entrypoints=websecure"
+      - "traefik.http.routers.consul-ui.tls.certresolver=myresolver"
+      - "traefik.http.services.consul-ui.loadbalancer.server.port=8500"
 
 networks:
   nstut-network:

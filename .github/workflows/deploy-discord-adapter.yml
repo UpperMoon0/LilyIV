@@ -1,4 +1,4 @@
-name: Deploy Lily-Discord-Adapter
+name: Deploy Lily-Discord-Adapter to Production
 
 on:
   repository_dispatch:
@@ -8,13 +8,11 @@ on:
       image_tag:
         description: 'Docker image tag to deploy'
         required: false
-        default: 'latest'
+        default: ''
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Only run if push was to main branch or manual dispatch
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.client_payload.ref == 'refs/heads/main' }}
 
     steps:
     - name: Deploy to VPS
@@ -28,17 +26,23 @@ jobs:
         script: |
           cd /root/LilyIV
 
+          # Get image tag from payload or input
+          IMAGE_TAG="${{ github.event.client_payload.image_tag || github.event.inputs.image_tag || 'latest' }}"
+          
           # Create directory structure for .env files
           mkdir -p Lily-Core Lily-Discord-Adapter
 
           # Update .env file with required environment variables
           echo "DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }}" > Lily-Discord-Adapter/.env
           echo "CONSUL_HTTP_ADDR=${{ secrets.CONSUL_HTTP_ADDR }}" >> Lily-Discord-Adapter/.env
-          echo "LILY_CORE_WS_URL=${{ secrets.LILY_CORE_WS_URL }}" >> Lily-Discord-Adapter/.env
-          echo "LILY_CORE_HTTP_URL=${{ secrets.LILY_CORE_HTTP_URL }}" >> Lily-Discord-Adapter/.env
 
-          # Pull latest image
-          docker pull nstut/lily-discord-adapter:${{ github.event.inputs.image_tag || 'latest' }}
+          # Pull the image
+          echo "Pulling nstut/lily-discord-adapter:$IMAGE_TAG"
+          docker pull nstut/lily-discord-adapter:$IMAGE_TAG
 
           # Restart only lily-discord-adapter service
           docker compose -f docker-compose.prod.yml up -d --no-deps lily-discord-adapter
+
+          # Verify deployment
+          echo "Deployment completed at $(date)"
+          docker ps --filter "name=lily-discord-adapter" --format "table {{.Names}}\t{{.Status}}"

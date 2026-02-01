@@ -1,4 +1,4 @@
-name: Deploy Lily-Core
+name: Deploy Lily-Core to Production
 
 on:
   repository_dispatch:
@@ -8,13 +8,11 @@ on:
       image_tag:
         description: 'Docker image tag to deploy'
         required: false
-        default: 'latest'
+        default: ''
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Only run if push was to main branch or manual dispatch
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.client_payload.ref == 'refs/heads/main' }}
 
     steps:
     - name: Deploy to VPS
@@ -28,6 +26,9 @@ jobs:
         script: |
           cd /root/LilyIV
 
+          # Get image tag from payload or input
+          IMAGE_TAG="${{ github.event.client_payload.image_tag || github.event.inputs.image_tag || 'latest' }}"
+          
           # Create directory structure for .env files
           mkdir -p Lily-Core Lily-Discord-Adapter
 
@@ -35,8 +36,13 @@ jobs:
           echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > Lily-Core/.env
           echo "CONSUL_HTTP_ADDR=${{ secrets.CONSUL_HTTP_ADDR }}" >> Lily-Core/.env
 
-          # Pull latest image
-          docker pull nstut/lily-core:${{ github.event.inputs.image_tag || 'latest' }}
+          # Pull the image
+          echo "Pulling nstut/lily-core:$IMAGE_TAG"
+          docker pull nstut/lily-core:$IMAGE_TAG
 
           # Restart only lily-core service
           docker compose -f docker-compose.prod.yml up -d --no-deps lily-core
+
+          # Verify deployment
+          echo "Deployment completed at $(date)"
+          docker ps --filter "name=lily-core" --format "table {{.Names}}\t{{.Status}}"
