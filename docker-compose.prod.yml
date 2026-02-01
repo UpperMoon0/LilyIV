@@ -19,9 +19,16 @@ services:
         ipv4_address: 172.18.0.10
     labels:
       - "traefik.enable=true"
+      # CORS Middleware - Allow requests from Lily Admin UI
+      - "traefik.http.middlewares.lily-core-cors.headers.accesscontrolallowmethods=GET,POST,OPTIONS,PUT,DELETE"
+      - "traefik.http.middlewares.lily-core-cors.headers.accesscontrolallowheaders=*"
+      - "traefik.http.middlewares.lily-core-cors.headers.accesscontrolalloworiginlist=https://lily-admin-ui.vercel.app"
+      - "traefik.http.middlewares.lily-core-cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.lily-core-cors.headers.addvaryheader=true"
       - "traefik.http.routers.lily-core.rule=Host(`lily-core.nstut.cloud`)"
       - "traefik.http.routers.lily-core.entrypoints=websecure"
       - "traefik.http.routers.lily-core.tls.certresolver=myresolver"
+      - "traefik.http.routers.lily-core.middlewares=lily-core-cors"
       - "traefik.http.services.lily-core.loadbalancer.server.port=8000"
 
   # Lily-Discord-Adapter - Discord bot adapter for Lily-Core
