@@ -25,11 +25,18 @@ services:
       - "traefik.http.middlewares.lily-core-cors.headers.accesscontrolalloworiginlist=https://lily-admin-ui.vercel.app"
       - "traefik.http.middlewares.lily-core-cors.headers.accesscontrolmaxage=100"
       - "traefik.http.middlewares.lily-core-cors.headers.addvaryheader=true"
+      # HTTP API router (port 8000)
       - "traefik.http.routers.lily-core.rule=Host(`lily-core.nstut.cloud`)"
       - "traefik.http.routers.lily-core.entrypoints=websecure"
       - "traefik.http.routers.lily-core.tls.certresolver=myresolver"
       - "traefik.http.routers.lily-core.middlewares=lily-core-cors"
       - "traefik.http.services.lily-core.loadbalancer.server.port=8000"
+      # WebSocket router (port 9002) - path /ws
+      - "traefik.http.routers.lily-core-ws.rule=Host(`lily-core.nstut.cloud`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.lily-core-ws.entrypoints=websecure"
+      - "traefik.http.routers.lily-core-ws.tls.certresolver=myresolver"
+      - "traefik.http.routers.lily-core-ws.middlewares=lily-core-cors"
+      - "traefik.http.services.lily-core-ws.loadbalancer.server.port=9002"
 
   # Lily-Discord-Adapter - Discord bot adapter for Lily-Core
   # Note: No Traefik config - Discord adapter communicates directly with Discord API
