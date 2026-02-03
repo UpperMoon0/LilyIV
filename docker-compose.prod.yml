@@ -42,7 +42,6 @@ services:
       - "traefik.http.routers.lily-core-ws.service=lily-core-ws"
 
   # Lily-Discord-Adapter - Discord bot adapter for Lily-Core
-  # Note: No Traefik config - Discord adapter communicates directly with Discord API
   lily-discord-adapter:
     image: nstut/lily-discord-adapter:latest
     container_name: lily-discord-adapter
@@ -60,6 +59,22 @@ services:
     depends_on:
       - lily-core
       - consul
+    labels:
+      - "traefik.enable=true"
+      # CORS Middleware - Allow requests from Lily Admin UI
+      - "traefik.http.middlewares.lily-discord-adapter-cors.headers.accesscontrolallowmethods=GET,POST,OPTIONS,PUT,DELETE"
+      - "traefik.http.middlewares.lily-discord-adapter-cors.headers.accesscontrolallowheaders=*"
+      - "traefik.http.middlewares.lily-discord-adapter-cors.headers.accesscontrolalloworiginlist=https://lily-admin-ui.vercel.app"
+      - "traefik.http.middlewares.lily-discord-adapter-cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.lily-discord-adapter-cors.headers.addvaryheader=true"
+      # Service definition
+      - "traefik.http.services.lily-discord-adapter.loadbalancer.server.port=8004"
+      # HTTP API router
+      - "traefik.http.routers.lily-discord-adapter.rule=Host(`lily-discord-adapter.nstut.cloud`)"
+      - "traefik.http.routers.lily-discord-adapter.entrypoints=websecure"
+      - "traefik.http.routers.lily-discord-adapter.tls.certresolver=myresolver"
+      - "traefik.http.routers.lily-discord-adapter.middlewares=lily-discord-adapter-cors"
+      - "traefik.http.routers.lily-discord-adapter.service=lily-discord-adapter"
 
   # Consul - Service Registry
   consul:

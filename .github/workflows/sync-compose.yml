@@ -22,7 +22,7 @@ jobs:
         username: ${{ secrets.VPS_USERNAME }}
         password: ${{ secrets.VPS_PASSWORD }}
         port: 22
-        timeout: 60s
+        timeout: 120s
         source: "docker-compose.prod.yml"
         target: "/root/LilyIV"
         overwrite: true
