@@ -86,12 +86,14 @@ services:
       - "traefik.http.routers.consul-api.entrypoints=websecure"
       - "traefik.http.routers.consul-api.tls.certresolver=myresolver"
       - "traefik.http.routers.consul-api.middlewares=consul-cors"
+      - "traefik.http.routers.consul-api.service=consul-api"
       - "traefik.http.services.consul-api.loadbalancer.server.port=8500"
       # UI Dashboard (port 8500 - same port, different router)
       - "traefik.http.routers.consul-ui.rule=Host(`consul.nstut.cloud`)"
       - "traefik.http.routers.consul-ui.entrypoints=websecure"
       - "traefik.http.routers.consul-ui.tls.certresolver=myresolver"
       - "traefik.http.routers.consul-ui.middlewares=consul-cors"
+      - "traefik.http.routers.consul-ui.service=consul-ui"
       - "traefik.http.services.consul-ui.loadbalancer.server.port=8500"
 
 networks:
