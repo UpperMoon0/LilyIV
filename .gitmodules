@@ -1,21 +1,28 @@
 [submodule "Lily-Core"]
 	path = Lily-Core
 	url = https://github.com/UpperMoon0/Lily-Core.git
+	branch = main
 [submodule "Lily-UI"]
 	path = Lily-UI
 	url = https://github.com/UpperMoon0/Lily-UI.git
+	branch = main
 [submodule "Web-Scout"]
 	path = Web-Scout
 	url = https://github.com/UpperMoon0/Web-Scout.git
+	branch = main
 [submodule "Echo"]
 	path = Echo
 	url = https://github.com/UpperMoon0/Echo.git
+	branch = main
 [submodule "TTS-Provider"]
 	path = TTS-Provider
 	url = https://github.com/UpperMoon0/TTS-Provider.git
+	branch = main
 [submodule "Lily-Admin-UI"]
 	path = Lily-Admin-UI
 	url = https://github.com/UpperMoon0/Lily-Admin-UI.git
+	branch = main
 [submodule "Lily-Discord-Adapter"]
 	path = Lily-Discord-Adapter
 	url = https://github.com/UpperMoon0/Lily-Discord-Adapter.git
+	branch = main
