@@ -4,11 +4,6 @@ on:
   repository_dispatch:
     types: [lily-discord-adapter-pushed]
   workflow_dispatch:
-    inputs:
-      image_tag:
-        description: 'Docker image tag to deploy'
-        required: false
-        default: ''
 
 jobs:
   deploy:
