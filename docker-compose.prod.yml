@@ -35,13 +35,13 @@ services:
       - "traefik.http.services.lily-core-ws.loadbalancer.server.port=9002"
       - "traefik.http.services.lily-core-ws.loadbalancer.responseForwarding.flushInterval=100ms"
       # HTTP API router (port 8000)
-      - "traefik.http.routers.lily-core.rule=Host(`lily-core.nstut.cloud`) && !PathPrefix(`/ws`)"
+      - "traefik.http.routers.lily-core.rule=Host(`lily-core.nstut.cloud`)"
       - "traefik.http.routers.lily-core.entrypoints=websecure"
       - "traefik.http.routers.lily-core.tls.certresolver=myresolver"
       - "traefik.http.routers.lily-core.middlewares=lily-core-cors"
       - "traefik.http.routers.lily-core.service=lily-core-http"
-      # WebSocket router (port 9002) - root path with TLS
-      - "traefik.http.routers.lily-core-ws.rule=Host(`lily-core.nstut.cloud`)"
+      # WebSocket router (port 9002) - use Upgrade header for matching
+      - "traefik.http.routers.lily-core-ws.rule=Host(`lily-core.nstut.cloud`) && Headers(`Upgrade`, `websocket`)"
       - "traefik.http.routers.lily-core-ws.entrypoints=websecure"
       - "traefik.http.routers.lily-core-ws.tls.certresolver=myresolver"
       - "traefik.http.routers.lily-core-ws.middlewares=lily-core-ws-cors"
