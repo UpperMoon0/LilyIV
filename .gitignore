@@ -1,3 +1,6 @@
 # Ignore environment variables file
 .env
 .kilocode/mcp.json
+
+# Gateway is a separate repository, not part of this monorepo
+Gateway/
