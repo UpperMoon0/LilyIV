@@ -40,8 +40,9 @@ services:
       - "traefik.http.routers.lily-core.tls.certresolver=myresolver"
       - "traefik.http.routers.lily-core.middlewares=lily-core-cors"
       - "traefik.http.routers.lily-core.service=lily-core-http"
-      # WebSocket router (port 9002) - use Upgrade header for matching
-      - "traefik.http.routers.lily-core-ws.rule=Host(`lily-core.nstut.cloud`) && Headers(`Upgrade`, `websocket`)"
+      # WebSocket router (port 9002) - use HostSNI for TLS WebSocket with high priority
+      - "traefik.http.routers.lily-core-ws.rule=HostSNI(`lily-core.nstut.cloud`)"
+      - "traefik.http.routers.lily-core-ws.priority=100"
       - "traefik.http.routers.lily-core-ws.entrypoints=websecure"
       - "traefik.http.routers.lily-core-ws.tls.certresolver=myresolver"
       - "traefik.http.routers.lily-core-ws.middlewares=lily-core-ws-cors"
