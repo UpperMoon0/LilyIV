@@ -26,8 +26,8 @@ jobs:
         script: |
           cd /root/LilyIV
 
-          # Get image tag from payload or input
-          IMAGE_TAG="${{ github.event.client_payload.image_tag || github.event.inputs.image_tag || 'latest' }}"
+          # Always use latest tag
+          IMAGE_TAG="latest"
           
           # Create directory structure for .env files
           mkdir -p Lily-Core Lily-Discord-Adapter
