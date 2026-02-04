@@ -12,9 +12,12 @@ services:
     env_file:
       - ./Lily-Core/.env
     depends_on:
-      - web-scout
-      - tts-provider
-      - consul
+      web-scout:
+        condition: service_started
+      tts-provider:
+        condition: service_started
+      consul:
+        condition: service_healthy
     networks:
       - lily-network
     environment:
@@ -37,7 +40,8 @@ services:
     networks:
       - lily-network
     depends_on:
-      - consul
+      consul:
+        condition: service_healthy
     restart: unless-stopped
     volumes:
       - web-scout-data:/app/data
@@ -63,7 +67,8 @@ services:
               count: 1
               capabilities: [ gpu ]
     depends_on:
-      - consul
+      consul:
+        condition: service_healthy
     networks:
       - lily-network
     restart: unless-stopped
@@ -85,7 +90,8 @@ services:
       - DEBUG=${DEBUG:-false}
       - CONSUL_HTTP_ADDR=consul:8500
     depends_on:
-      - consul
+      consul:
+        condition: service_healthy
     networks:
       - lily-network
     restart: unless-stopped
@@ -106,8 +112,10 @@ services:
       - PYTHONPATH=/app/Lily-Discord-Adapter
       - CONSUL_HTTP_ADDR=consul:8500
     depends_on:
-      - lily-core
-      - consul
+      lily-core:
+        condition: service_started
+      consul:
+        condition: service_healthy
     networks:
       - lily-network
     restart: unless-stopped
@@ -136,6 +144,12 @@ services:
       - lily-network
     command: "agent -dev -client '0.0.0.0'"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8500/v1/status/leader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 networks:
   lily-network:

@@ -17,6 +17,9 @@ services:
     networks:
       nstut-network:
         ipv4_address: 172.18.0.10
+    depends_on:
+      consul:
+        condition: service_healthy
     labels:
       - "traefik.enable=true"
       # CORS Middleware - Allow requests from Lily Admin UI
@@ -65,8 +68,10 @@ services:
       nstut-network:
         ipv4_address: 172.18.0.20
     depends_on:
-      - lily-core
-      - consul
+      lily-core:
+        condition: service_started
+      consul:
+        condition: service_healthy
     labels:
       - "traefik.enable=true"
       # CORS Middleware - Allow requests from Lily Admin UI
@@ -96,6 +101,12 @@ services:
       nstut-network:
         ipv4_address: 172.18.0.100
     command: "agent -dev -client '0.0.0.0' -ui"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8500/v1/status/leader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     labels:
       - "traefik.enable=true"
       # CORS Middleware - Allow requests from Lily Admin UI
