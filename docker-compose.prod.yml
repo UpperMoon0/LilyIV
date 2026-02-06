@@ -12,11 +12,13 @@ services:
     ports:
       - "8000:8000"
       - "9002:9002"
-    env_file:
-      - ./Lily-Core/.env
+    volumes:
+      - lily-core-data:/app/data
     networks:
       nstut-network:
         ipv4_address: 172.18.0.10
+    environment:
+      - LOG_LEVEL=INFO
     depends_on:
       consul:
         condition: service_healthy
@@ -138,5 +140,7 @@ networks:
     external: true
 
 volumes:
+  lily-core-data:
+    driver: local
   lily-discord-adapter-data:
     driver: local

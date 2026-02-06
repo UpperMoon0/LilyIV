@@ -9,8 +9,6 @@ services:
     ports:
       - "8000:8000"
       - "9002:9002"
-    env_file:
-      - ./Lily-Core/.env
     depends_on:
       web-scout:
         condition: service_started
@@ -22,7 +20,10 @@ services:
       - lily-network
     environment:
       - CONSUL_HTTP_ADDR=consul:8500
+      - LOG_LEVEL=INFO
     restart: unless-stopped
+    volumes:
+      - lily-core-data:/app/data
 
   # Web-Scout Application - Web search and MCP server
   web-scout:
@@ -156,6 +157,9 @@ networks:
     driver: bridge
 
 volumes:
+  # Data persistence for Lily-Core
+  lily-core-data:
+    driver: local
   # Data persistence for Web-Scout
   web-scout-data:
     driver: local
