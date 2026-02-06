@@ -111,6 +111,7 @@ services:
       - PORT=8004
       - PYTHONPATH=/app/Lily-Discord-Adapter
       - CONSUL_HTTP_ADDR=consul:8500
+      - YOUTUBE_COOKIES_FILE=/app/Lily-Discord-Adapter/cookies.txt
     depends_on:
       lily-core:
         condition: service_started
@@ -121,6 +122,7 @@ services:
     restart: unless-stopped
     volumes:
       - lily-discord-adapter-data:/app/data
+      - ./Lily-Discord-Adapter/cookies.txt:/app/Lily-Discord-Adapter/cookies.txt
 
   # E2E Test Runner - Runs Python script to test speech flow
   e2e-test:
