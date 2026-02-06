@@ -64,7 +64,6 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PORT=8004
-      - YOUTUBE_COOKIES_FILE=/app/data/cookies.txt
     volumes:
       - lily-discord-adapter-data:/app/data
     networks:

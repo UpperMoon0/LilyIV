@@ -111,7 +111,6 @@ services:
       - PORT=8004
       - PYTHONPATH=/app/Lily-Discord-Adapter
       - CONSUL_HTTP_ADDR=consul:8500
-      - YOUTUBE_COOKIES_FILE=/app/data/cookies.txt
     depends_on:
       lily-core:
         condition: service_started
