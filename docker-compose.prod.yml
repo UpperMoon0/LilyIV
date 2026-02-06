@@ -64,9 +64,8 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PORT=8004
-      - YOUTUBE_COOKIES_FILE=/app/Lily-Discord-Adapter/cookies.txt
+      - YOUTUBE_COOKIES_FILE=/app/data/cookies.txt
     volumes:
-      - ./Lily-Discord-Adapter/cookies.txt:/app/Lily-Discord-Adapter/cookies.txt
       - lily-discord-adapter-data:/app/data
     networks:
       nstut-network:
