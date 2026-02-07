@@ -28,8 +28,7 @@ jobs:
           mkdir -p Lily-Core Lily-Discord-Adapter
 
           # Update .env file with required environment variables
-          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > Lily-Core/.env
-          echo "CONSUL_HTTP_ADDR=${{ secrets.CONSUL_HTTP_ADDR }}" >> Lily-Core/.env
+          echo "CONSUL_HTTP_ADDR=${{ secrets.CONSUL_HTTP_ADDR }}" > Lily-Core/.env
 
           # Pull the image
           echo "Pulling nstut/lily-core:$IMAGE_TAG"
