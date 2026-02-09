@@ -10,14 +10,37 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Fetch Secrets from Key Vault
+      id: kv
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          GEMINI_KEY=$(az keyvault secret show --vault-name nstutcommonkv --name gemini-api-key --query value -o tsv)
+          CONSUL_ADDR=$(az keyvault secret show --vault-name nstutcommonkv --name consul-http-addr --query value -o tsv)
+          
+          echo "::add-mask::$GEMINI_KEY"
+          echo "::add-mask::$CONSUL_ADDR"
+          
+          echo "GEMINI_API_KEY=$GEMINI_KEY" >> $GITHUB_OUTPUT
+          echo "CONSUL_HTTP_ADDR=$CONSUL_ADDR" >> $GITHUB_OUTPUT
+
     - name: Deploy to VPS
       uses: appleboy/ssh-action@v1.0.3
+      env:
+        GEMINI_KEY: ${{ steps.kv.outputs.GEMINI_API_KEY }}
+        CONSUL_ADDR: ${{ steps.kv.outputs.CONSUL_HTTP_ADDR }}
       with:
         host: ${{ secrets.VPS_HOST }}
         username: ${{ secrets.VPS_USERNAME }}
         password: ${{ secrets.VPS_PASSWORD }}
         port: 22
         timeout: 120s
+        envs: GEMINI_KEY,CONSUL_ADDR
         script: |
           cd /root/LilyIV
 
@@ -28,8 +51,8 @@ jobs:
           mkdir -p Web-Scout
 
           # Update .env file with required environment variables
-          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > Web-Scout/.env
-          echo "CONSUL_HTTP_ADDR=${{ secrets.CONSUL_HTTP_ADDR }}" >> Web-Scout/.env
+          echo "GEMINI_API_KEY=$GEMINI_KEY" > Web-Scout/.env
+          echo "CONSUL_HTTP_ADDR=$CONSUL_ADDR" >> Web-Scout/.env
 
           # Pull the image
           echo "Pulling nstut/web-scout:$IMAGE_TAG"
