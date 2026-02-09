@@ -35,7 +35,7 @@ if "%TARGET_DIR%"=="" set TARGET_DIR=/root/LilyIV
 
 echo Connecting to %VPS_USER%@%VPS_HOST% to restart services in %TARGET_DIR%...
 
-ssh %VPS_USER%@%VPS_HOST% "cd %TARGET_DIR% && echo Stopping services... && docker compose -f docker-compose.prod.yml down && echo. && echo Starting services... && docker compose -f docker-compose.prod.yml up -d && echo. && echo Current Status: && docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"
+ssh %VPS_USER%@%VPS_HOST% "cd %TARGET_DIR% && echo Stopping services... && docker compose -f docker-compose.prod.yml down && echo && echo Starting services... && docker compose -f docker-compose.prod.yml up -d && echo && echo Current Status: && docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"
 
 echo.
 echo Operation complete.
