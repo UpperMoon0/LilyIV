@@ -11,7 +11,6 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
-      - "9002:9002"
     volumes:
       - lily-core-data:/app/data
     networks:
@@ -36,25 +35,24 @@ services:
       - "traefik.http.middlewares.lily-core-ws-cors.headers.accesscontrolallowmethods=GET,POST,OPTIONS"
       - "traefik.http.middlewares.lily-core-ws-cors.headers.accesscontrolallowheaders=*"
       - "traefik.http.middlewares.lily-core-ws-cors.headers.accesscontrolalloworiginlist=https://lily-admin-ui.vercel.app"
-      - "traefik.http.middlewares.lily-core-ws-strip.stripprefix.prefixes=/ws"
+      
       # HTTP Service definition (port 8000)
       - "traefik.http.services.lily-core-http.loadbalancer.server.port=8000"
-      # WebSocket Service definition (port 9002) - with extended timeouts
-      - "traefik.http.services.lily-core-ws.loadbalancer.server.port=9002"
-      - "traefik.http.services.lily-core-ws.loadbalancer.responseForwarding.flushInterval=100ms"
+      
       # HTTP API router (port 8000)
       - "traefik.http.routers.lily-core.rule=Host(`lily-core.nstut.cloud`)"
       - "traefik.http.routers.lily-core.entrypoints=websecure"
       - "traefik.http.routers.lily-core.tls.certresolver=myresolver"
       - "traefik.http.routers.lily-core.middlewares=lily-core-cors"
       - "traefik.http.routers.lily-core.service=lily-core-http"
-      # WebSocket router (port 9002) - use PathPrefix since Headers matcher is unsupported
+      
+      # WebSocket router (port 8000 via /ws prefix)
       - "traefik.http.routers.lily-core-ws.rule=Host(`lily-core.nstut.cloud`) && PathPrefix(`/ws`)"
       - "traefik.http.routers.lily-core-ws.priority=100"
       - "traefik.http.routers.lily-core-ws.entrypoints=websecure"
       - "traefik.http.routers.lily-core-ws.tls.certresolver=myresolver"
-      - "traefik.http.routers.lily-core-ws.middlewares=lily-core-ws-cors,lily-core-ws-strip"
-      - "traefik.http.routers.lily-core-ws.service=lily-core-ws"
+      - "traefik.http.routers.lily-core-ws.middlewares=lily-core-ws-cors"
+      - "traefik.http.routers.lily-core-ws.service=lily-core-http"
 
   # Lily-Discord-Adapter - Discord bot adapter for Lily-Core
   lily-discord-adapter:

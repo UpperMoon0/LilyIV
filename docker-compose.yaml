@@ -8,7 +8,6 @@ services:
     build: ./Lily-Core
     ports:
       - "8000:8000"
-      - "9002:9002"
     depends_on:
       web-scout:
         condition: service_started
