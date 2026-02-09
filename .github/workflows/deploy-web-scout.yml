@@ -3,7 +3,6 @@ name: Deploy Web-Scout to Production
 on:
   repository_dispatch:
     types: [web-scout-pushed]
-  workflow_dispatch:
 
 jobs:
   deploy:

@@ -3,7 +3,6 @@ name: Deploy Lily-Core to Production
 on:
   repository_dispatch:
     types: [lily-core-pushed]
-  workflow_dispatch:
 
 jobs:
   deploy:

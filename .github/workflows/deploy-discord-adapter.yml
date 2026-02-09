@@ -3,7 +3,6 @@ name: Deploy Lily-Discord-Adapter to Production
 on:
   repository_dispatch:
     types: [lily-discord-adapter-pushed]
-  workflow_dispatch:
 
 jobs:
   deploy:
