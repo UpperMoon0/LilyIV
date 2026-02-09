@@ -93,6 +93,40 @@ services:
       - "traefik.http.routers.lily-discord-adapter.middlewares=lily-discord-adapter-cors"
       - "traefik.http.routers.lily-discord-adapter.service=lily-discord-adapter"
 
+  # Web-Scout - Web search and summarization service
+  web-scout:
+    image: nstut/web-scout:latest
+    container_name: web-scout
+    restart: unless-stopped
+    ports:
+      - "8005:8000"
+    env_file:
+      - ./Web-Scout/.env
+    environment:
+      - PORT=8000
+    networks:
+      nstut-network:
+        ipv4_address: 172.18.0.30
+    depends_on:
+      consul:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      # CORS Middleware
+      - "traefik.http.middlewares.web-scout-cors.headers.accesscontrolallowmethods=GET,POST,OPTIONS"
+      - "traefik.http.middlewares.web-scout-cors.headers.accesscontrolallowheaders=*"
+      - "traefik.http.middlewares.web-scout-cors.headers.accesscontrolalloworiginlist=https://lily-admin-ui.vercel.app"
+      - "traefik.http.middlewares.web-scout-cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.web-scout-cors.headers.addvaryheader=true"
+      # Service definition
+      - "traefik.http.services.web-scout.loadbalancer.server.port=8000"
+      # HTTP API router
+      - "traefik.http.routers.web-scout.rule=Host(`web-scout.nstut.cloud`)"
+      - "traefik.http.routers.web-scout.entrypoints=websecure"
+      - "traefik.http.routers.web-scout.tls.certresolver=myresolver"
+      - "traefik.http.routers.web-scout.middlewares=web-scout-cors"
+      - "traefik.http.routers.web-scout.service=web-scout"
+
   # Consul - Service Registry
   consul:
     image: hashicorp/consul:latest

@@ -1,0 +1,43 @@
+name: Deploy Web-Scout to Production
+
+on:
+  repository_dispatch:
+    types: [web-scout-pushed]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Deploy to VPS
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USERNAME }}
+        password: ${{ secrets.VPS_PASSWORD }}
+        port: 22
+        timeout: 120s
+        script: |
+          cd /root/LilyIV
+
+          # Always use latest tag
+          IMAGE_TAG="latest"
+          
+          # Create directory structure for .env files
+          mkdir -p Web-Scout
+
+          # Update .env file with required environment variables
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > Web-Scout/.env
+          echo "CONSUL_HTTP_ADDR=${{ secrets.CONSUL_HTTP_ADDR }}" >> Web-Scout/.env
+
+          # Pull the image
+          echo "Pulling nstut/web-scout:$IMAGE_TAG"
+          docker pull nstut/web-scout:$IMAGE_TAG
+
+          # Restart only web-scout service
+          docker compose -f docker-compose.prod.yml up -d --no-deps web-scout
+
+          # Verify deployment
+          echo "Deployment completed at $(date)"
+          docker ps --filter "name=web-scout" --format "table {{.Names}}\t{{.Status}}"
