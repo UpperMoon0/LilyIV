@@ -9,14 +9,46 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Fetch Secrets from Key Vault
+      id: kv
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          CONSUL_ADDR=$(az keyvault secret show --vault-name nstutcommonkv --name consul-http-addr --query value -o tsv)
+          VPS_HOST=$(az keyvault secret show --vault-name nstutcommonkv --name vps-host --query value -o tsv)
+          VPS_USER=$(az keyvault secret show --vault-name nstutcommonkv --name vps-username --query value -o tsv)
+          VPS_PASS=$(az keyvault secret show --vault-name nstutcommonkv --name vps-password --query value -o tsv)
+          DOMAIN_NAME=$(az keyvault secret show --vault-name nstutcommonkv --name domain-name --query value -o tsv)
+          
+          echo "::add-mask::$CONSUL_ADDR"
+          echo "::add-mask::$VPS_HOST"
+          echo "::add-mask::$VPS_USER"
+          echo "::add-mask::$VPS_PASS"
+          echo "::add-mask::$DOMAIN_NAME"
+          
+          echo "CONSUL_HTTP_ADDR=$CONSUL_ADDR" >> $GITHUB_OUTPUT
+          echo "VPS_HOST=$VPS_HOST" >> $GITHUB_OUTPUT
+          echo "VPS_USERNAME=$VPS_USER" >> $GITHUB_OUTPUT
+          echo "VPS_PASSWORD=$VPS_PASS" >> $GITHUB_OUTPUT
+          echo "DOMAIN_NAME=$DOMAIN_NAME" >> $GITHUB_OUTPUT
+
     - name: Deploy to VPS
       uses: appleboy/ssh-action@v1.0.3
+      env:
+        CONSUL_ADDR: ${{ steps.kv.outputs.CONSUL_HTTP_ADDR }}
+        DOMAIN_NAME: ${{ steps.kv.outputs.DOMAIN_NAME }}
       with:
-        host: ${{ secrets.VPS_HOST }}
-        username: ${{ secrets.VPS_USERNAME }}
-        password: ${{ secrets.VPS_PASSWORD }}
+        host: ${{ steps.kv.outputs.VPS_HOST }}
+        username: ${{ steps.kv.outputs.VPS_USERNAME }}
+        password: ${{ steps.kv.outputs.VPS_PASSWORD }}
         port: 22
         timeout: 300s
+        envs: CONSUL_ADDR,DOMAIN_NAME
         script: |
           cd /root/LilyIV
 
@@ -27,7 +59,8 @@ jobs:
           mkdir -p Lily-Core Lily-Discord-Adapter
 
           # Update .env file with required environment variables
-          echo "CONSUL_HTTP_ADDR=${{ secrets.CONSUL_HTTP_ADDR }}" > Lily-Core/.env
+          echo "CONSUL_HTTP_ADDR=$CONSUL_ADDR" > Lily-Core/.env
+          echo "DOMAIN_NAME=$DOMAIN_NAME" >> Lily-Core/.env
 
           # Pull the image
           echo "Pulling nstut/lily-core:$IMAGE_TAG"

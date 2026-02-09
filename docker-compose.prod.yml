@@ -19,6 +19,8 @@ services:
         ipv4_address: 172.18.0.10
     environment:
       - LOG_LEVEL=INFO
+    env_file:
+      - ./Lily-Core/.env
     depends_on:
       consul:
         condition: service_healthy

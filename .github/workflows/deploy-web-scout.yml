@@ -24,31 +24,35 @@ jobs:
           VPS_HOST=$(az keyvault secret show --vault-name nstutcommonkv --name vps-host --query value -o tsv)
           VPS_USER=$(az keyvault secret show --vault-name nstutcommonkv --name vps-username --query value -o tsv)
           VPS_PASS=$(az keyvault secret show --vault-name nstutcommonkv --name vps-password --query value -o tsv)
+          DOMAIN_NAME=$(az keyvault secret show --vault-name nstutcommonkv --name domain-name --query value -o tsv)
           
           echo "::add-mask::$GEMINI_KEY"
           echo "::add-mask::$CONSUL_ADDR"
           echo "::add-mask::$VPS_HOST"
           echo "::add-mask::$VPS_USER"
           echo "::add-mask::$VPS_PASS"
+          echo "::add-mask::$DOMAIN_NAME"
           
           echo "GEMINI_API_KEY=$GEMINI_KEY" >> $GITHUB_OUTPUT
           echo "CONSUL_HTTP_ADDR=$CONSUL_ADDR" >> $GITHUB_OUTPUT
           echo "VPS_HOST=$VPS_HOST" >> $GITHUB_OUTPUT
           echo "VPS_USERNAME=$VPS_USER" >> $GITHUB_OUTPUT
           echo "VPS_PASSWORD=$VPS_PASS" >> $GITHUB_OUTPUT
+          echo "DOMAIN_NAME=$DOMAIN_NAME" >> $GITHUB_OUTPUT
 
     - name: Deploy to VPS
       uses: appleboy/ssh-action@v1.0.3
       env:
         GEMINI_KEY: ${{ steps.kv.outputs.GEMINI_API_KEY }}
         CONSUL_ADDR: ${{ steps.kv.outputs.CONSUL_HTTP_ADDR }}
+        DOMAIN_NAME: ${{ steps.kv.outputs.DOMAIN_NAME }}
       with:
         host: ${{ steps.kv.outputs.VPS_HOST }}
         username: ${{ steps.kv.outputs.VPS_USERNAME }}
         password: ${{ steps.kv.outputs.VPS_PASSWORD }}
         port: 22
         timeout: 120s
-        envs: GEMINI_KEY,CONSUL_ADDR
+        envs: GEMINI_KEY,CONSUL_ADDR,DOMAIN_NAME
         script: |
           cd /root/LilyIV
 
@@ -61,6 +65,7 @@ jobs:
           # Update .env file with required environment variables
           echo "GEMINI_API_KEY=$GEMINI_KEY" > Web-Scout/.env
           echo "CONSUL_HTTP_ADDR=$CONSUL_ADDR" >> Web-Scout/.env
+          echo "DOMAIN_NAME=$DOMAIN_NAME" >> Web-Scout/.env
 
           # Pull the image
           echo "Pulling nstut/web-scout:$IMAGE_TAG"
