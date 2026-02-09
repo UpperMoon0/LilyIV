@@ -26,3 +26,7 @@
 	path = Lily-Discord-Adapter
 	url = https://github.com/UpperMoon0/Lily-Discord-Adapter.git
 	branch = main
+[submodule "Sentinel"]
+	path = Sentinel
+	url = https://github.com/UpperMoon0/Sentinel.git
+	branch = main
