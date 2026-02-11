@@ -85,6 +85,8 @@ services:
       - ./Web-Scout/.env
     environment:
       - PORT=8000
+    volumes:
+      - web-scout-data:/app/data
     networks:
       nstut-network:
         ipv4_address: 172.18.0.30
@@ -143,4 +145,6 @@ volumes:
   lily-core-data:
     driver: local
   lily-discord-adapter-data:
+    driver: local
+  web-scout-data:
     driver: local
