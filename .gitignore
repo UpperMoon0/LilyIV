@@ -5,3 +5,4 @@
 # Gateway is a separate repository, not part of this monorepo
 Gateway/
 repo_config.json
+.vscode/settings.json
