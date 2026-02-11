@@ -1,23 +1,56 @@
 # LilyIV
 
-This repository is a central place for all the sub-projects of LilyIV.
+LilyIV is an intelligent multi-component AI system featuring voice interaction, Discord integration, web scouting, and an admin management interface.
 
-## Submodules
+## Modules
 
-This repository uses Git submodules to manage its dependencies.
+| Module | Description |
+|--------|-------------|
+| [Echo](./Echo/README.md) | Speech-to-text and text-to-speech service |
+| [Lily-Core](./Lily-Core/README.md) | Core AI agent loop and chat processing engine |
+| [Lily-Discord-Adapter](./Lily-Discord-Adapter/README.md) | Discord bot integration and messaging |
+| [Lily-Admin-UI](./Lily-Admin-UI/client/README.md) | Admin dashboard for system monitoring |
+| [Lily-UI](./Lily-UI/README.md) | Voice interaction UI |
+| [Sentinel](./Sentinel/README.md) | JWT authentication & authorization service |
+| [TTS-Provider](./TTS-Provider/README.md) | Text-to-speech provider service |
+| [Web-Scout](./Web-Scout/README.md) | Web research and information gathering |
 
-### Cloning
+## Getting Started
 
-To clone this repository and all its submodules, use the following command:
+### Prerequisites
+
+- Docker & Docker Compose
+- Git (with submodule support)
+
+### Setup
 
 ```bash
+# Clone with submodules
 git clone --recurse-submodules https://github.com/UpperMoon0/LilyIV.git
+cd LilyIV
+
+# Initialize/update submodules
+git submodule update --init --recursive
+
+# Copy environment templates and configure
+cp .env.template .env
+find . -name ".env.template" -exec cp {} {}.template \;
+
+# Start all services
+docker compose up -d
 ```
 
-### Existing Clones
+See individual module READMEs for detailed development setup.
 
-If you have already cloned the repository without the submodules, you can initialize and update them with these commands:
+## Features
 
-```bash
-git submodule init
-git submodule update
+- **Voice Chat**: Real-time speech processing via Echo service
+- **Discord Integration**: Bot with commands, music, and conversations
+- **Web Scouting**: Intelligent web research capabilities
+- **Admin Dashboard**: Real-time system monitoring and configuration
+
+See [docs/features](./docs/features/) for detailed documentation.
+
+## License
+
+MIT License
