@@ -8,7 +8,7 @@ LilyIV is an intelligent multi-component AI system featuring voice interaction, 
 |--------|-------------|
 | [Echo](./Echo/README.md) | Speech-to-text and text-to-speech service |
 | [Lily-Core](./Lily-Core/README.md) | Core AI agent loop and chat processing engine |
-| [Lily-Discord-Adapter](./Lily-Discord-Adapter/README.md) | Discord bot integration and messaging |
+| [Discord Adapter](./Lily-Discord-Adapter/README.md) | Discord bot integration and messaging |
 | [Lily-Admin-UI](./Lily-Admin-UI/client/README.md) | Admin dashboard for system monitoring |
 | [Lily-UI](./Lily-UI/README.md) | Voice interaction UI |
 | [Sentinel](./Sentinel/README.md) | JWT authentication & authorization service |
