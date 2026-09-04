@@ -7,6 +7,16 @@ on:
     paths:
       - 'docker-compose.prod.yml'
 
+permissions:
+  contents: read
+
+# All workflows that mutate the production Lily Compose stack must share this
+# lock. Otherwise two simultaneous docker compose operations can race while a
+# container is being removed/recreated.
+concurrency:
+  group: lily-compose-production
+  cancel-in-progress: false
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -16,26 +26,27 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Azure Login
-      uses: azure/login@v1
+      uses: azure/login@v2
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
     - name: Fetch Secrets from Key Vault
       id: kv
-      uses: azure/CLI@v1
+      uses: azure/CLI@v2
       with:
         inlineScript: |
+          set -euo pipefail
           VPS_HOST=$(az keyvault secret show --vault-name nstutcommonkv --name vps-host --query value -o tsv)
           VPS_USER=$(az keyvault secret show --vault-name nstutcommonkv --name vps-username --query value -o tsv)
           VPS_PASS=$(az keyvault secret show --vault-name nstutcommonkv --name vps-password --query value -o tsv)
-          
+
           echo "::add-mask::$VPS_HOST"
           echo "::add-mask::$VPS_USER"
           echo "::add-mask::$VPS_PASS"
-          
-          echo "VPS_HOST=$VPS_HOST" >> $GITHUB_OUTPUT
-          echo "VPS_USERNAME=$VPS_USER" >> $GITHUB_OUTPUT
-          echo "VPS_PASSWORD=$VPS_PASS" >> $GITHUB_OUTPUT
+
+          echo "VPS_HOST=$VPS_HOST" >> "$GITHUB_OUTPUT"
+          echo "VPS_USERNAME=$VPS_USER" >> "$GITHUB_OUTPUT"
+          echo "VPS_PASSWORD=$VPS_PASS" >> "$GITHUB_OUTPUT"
 
     - name: Copy docker-compose.prod.yml to VPS
       uses: appleboy/scp-action@v0.1.7
@@ -50,19 +61,17 @@ jobs:
         overwrite: true
 
     - name: Restart services
-      uses: appleboy/ssh-action@v1.0.3
+      uses: appleboy/ssh-action@v1.2.5
       with:
         host: ${{ steps.kv.outputs.VPS_HOST }}
         username: ${{ steps.kv.outputs.VPS_USERNAME }}
         password: ${{ steps.kv.outputs.VPS_PASSWORD }}
         port: 22
-        timeout: 90s
+        timeout: 120s
+        command_timeout: 900s
         script: |
+          set -euo pipefail
           cd /root/LilyIV
-          
-          # Recreate services with new compose file (without rebuilding images)
           docker compose -f docker-compose.prod.yml up -d --no-deps
-          
-          # Show running services
           echo "Services after sync:"
           docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
