@@ -10,7 +10,6 @@ on:
 permissions:
   contents: read
 
-# Shares the production Compose lock with the security/sync workflows.
 concurrency:
   group: lily-compose-production
   cancel-in-progress: false
@@ -98,13 +97,14 @@ jobs:
       - name: Resolve target platform
         id: platform
         env:
-          ARCH: ${{ steps.arch.outputs.stdout }}
+          ARCH_OUTPUT: ${{ steps.arch.outputs.stdout }}
         run: |
           set -euo pipefail
-          case "$(printf '%s' "$ARCH" | tr -d '\r\n ')" in
+          ARCH=$(printf '%s\n' "$ARCH_OUTPUT" | tr -d '\r' | grep -E '^(x86_64|amd64|aarch64|arm64)$' | tail -n1 || true)
+          case "$ARCH" in
             x86_64|amd64) echo 'value=linux/amd64' >> "$GITHUB_OUTPUT" ;;
             aarch64|arm64) echo 'value=linux/arm64' >> "$GITHUB_OUTPUT" ;;
-            *) echo "Unsupported VPS architecture: $ARCH" >&2; exit 1 ;;
+            *) echo "Unsupported VPS architecture output" >&2; printf '%s\n' "$ARCH_OUTPUT" >&2; exit 1 ;;
           esac
 
       - name: Checkout Discord Adapter
@@ -164,7 +164,6 @@ jobs:
 
           cat >> deploy-context/Dockerfile <<'DOCKERFILE'
 
-          # Compose the independently packaged quiz addons into the release image.
           COPY quiz /opt/addons/quiz
           COPY gtnh-quiz-data /opt/addons/gtnh-quiz-data
           RUN --mount=type=cache,target=/root/.cache/pip \
@@ -241,7 +240,6 @@ jobs:
             if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; $SUDO true; fi
             cd /root/LilyIV
 
-            # Reassert the exact hardened Compose before touching the container.
             TMP_COMPOSE=$(mktemp)
             curl -fsSL "https://raw.githubusercontent.com/UpperMoon0/LilyIV/${LILYIV_SHA}/docker-compose.prod.yml" -o "$TMP_COMPOSE"
             grep -q 'user: "10001:10001"' "$TMP_COMPOSE"
