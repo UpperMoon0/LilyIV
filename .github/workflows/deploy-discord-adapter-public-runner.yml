@@ -1,0 +1,326 @@
+name: Deploy Discord Adapter (Public Runner Fallback)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/deploy-discord-adapter-public-runner.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Shares the production Compose lock with the security/sync workflows.
+concurrency:
+  group: lily-compose-production
+  cancel-in-progress: false
+
+env:
+  SOURCE_REPO: UpperMoon0/Discord-Adapter
+  QUIZ_REPO: UpperMoon0/quiz
+  GTNH_REPO: UpperMoon0/GTNH-Quiz-Data
+  IMAGE_REPO: nstut/lily-discord-adapter
+  KEY_VAULT: nstutcommonkv
+
+jobs:
+  deploy:
+    name: Build composite and deploy hardened Adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Fetch deployment secrets
+        id: kv
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            set -euo pipefail
+            GH_PAT=$(az keyvault secret show --vault-name "$KEY_VAULT" --name github-pat --query value -o tsv)
+            DOCKER_USER=$(az keyvault secret show --vault-name "$KEY_VAULT" --name dockerhub-username --query value -o tsv)
+            DOCKER_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name dockerhub-token --query value -o tsv)
+            VPS_HOST=$(az keyvault secret show --vault-name "$KEY_VAULT" --name vps-host --query value -o tsv)
+            VPS_USER=$(az keyvault secret show --vault-name "$KEY_VAULT" --name vps-username --query value -o tsv)
+            VPS_PASS=$(az keyvault secret show --vault-name "$KEY_VAULT" --name vps-password --query value -o tsv)
+            DOMAIN_NAME=$(az keyvault secret show --vault-name "$KEY_VAULT" --name domain-name --query value -o tsv)
+            for VALUE in "$GH_PAT" "$DOCKER_USER" "$DOCKER_TOKEN" "$VPS_HOST" "$VPS_USER" "$VPS_PASS" "$DOMAIN_NAME"; do
+              [ -z "$VALUE" ] || echo "::add-mask::$VALUE"
+            done
+            echo "GH_PAT=$GH_PAT" >> "$GITHUB_OUTPUT"
+            echo "DOCKER_USER=$DOCKER_USER" >> "$GITHUB_OUTPUT"
+            echo "DOCKER_TOKEN=$DOCKER_TOKEN" >> "$GITHUB_OUTPUT"
+            echo "VPS_HOST=$VPS_HOST" >> "$GITHUB_OUTPUT"
+            echo "VPS_USER=$VPS_USER" >> "$GITHUB_OUTPUT"
+            echo "VPS_PASS=$VPS_PASS" >> "$GITHUB_OUTPUT"
+            echo "DOMAIN_NAME=$DOMAIN_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve exact source revisions
+        id: state
+        env:
+          GH_PAT: ${{ steps.kv.outputs.GH_PAT }}
+        run: |
+          set -euo pipefail
+          resolve_sha() {
+            curl -fsS \
+              -H "Authorization: Bearer $GH_PAT" \
+              -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/$1/commits/main" | jq -r '.sha'
+          }
+          SOURCE_SHA=$(resolve_sha "$SOURCE_REPO")
+          QUIZ_SHA=$(resolve_sha "$QUIZ_REPO")
+          GTNH_SHA=$(resolve_sha "$GTNH_REPO")
+          for SHA in "$SOURCE_SHA" "$QUIZ_SHA" "$GTNH_SHA"; do
+            [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          done
+          RELEASE_SHA=$(printf '%s\n%s\n%s\n' "$SOURCE_SHA" "$QUIZ_SHA" "$GTNH_SHA" | sha256sum | cut -c1-40)
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "quiz_sha=$QUIZ_SHA" >> "$GITHUB_OUTPUT"
+          echo "gtnh_sha=$GTNH_SHA" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Probe VPS architecture
+        id: arch
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ steps.kv.outputs.VPS_HOST }}
+          username: ${{ steps.kv.outputs.VPS_USER }}
+          password: ${{ steps.kv.outputs.VPS_PASS }}
+          port: 22
+          timeout: 120s
+          command_timeout: 30s
+          capture_stdout: true
+          script: uname -m
+
+      - name: Resolve target platform
+        id: platform
+        env:
+          ARCH: ${{ steps.arch.outputs.stdout }}
+        run: |
+          set -euo pipefail
+          case "$(printf '%s' "$ARCH" | tr -d '\r\n ')" in
+            x86_64|amd64) echo 'value=linux/amd64' >> "$GITHUB_OUTPUT" ;;
+            aarch64|arm64) echo 'value=linux/arm64' >> "$GITHUB_OUTPUT" ;;
+            *) echo "Unsupported VPS architecture: $ARCH" >&2; exit 1 ;;
+          esac
+
+      - name: Checkout Discord Adapter
+        uses: actions/checkout@v4
+        with:
+          repository: UpperMoon0/Discord-Adapter
+          ref: ${{ steps.state.outputs.source_sha }}
+          token: ${{ steps.kv.outputs.GH_PAT }}
+          path: source
+          persist-credentials: false
+
+      - name: Checkout quiz addon
+        uses: actions/checkout@v4
+        with:
+          repository: UpperMoon0/quiz
+          ref: ${{ steps.state.outputs.quiz_sha }}
+          token: ${{ steps.kv.outputs.GH_PAT }}
+          path: addon-quiz
+          persist-credentials: false
+
+      - name: Checkout GTNH quiz data
+        uses: actions/checkout@v4
+        with:
+          repository: UpperMoon0/GTNH-Quiz-Data
+          ref: ${{ steps.state.outputs.gtnh_sha }}
+          token: ${{ steps.kv.outputs.GH_PAT }}
+          path: addon-gtnh
+          persist-credentials: false
+
+      - name: Prepare hardened composite image
+        run: |
+          set -euo pipefail
+          test -f source/services/access_policy_service.py
+          grep -q 'DISCORD_CHAT_GUILD_IDS' source/controllers/message_controller.py
+          grep -q 'LILY_CORE_HTTP_URL' source/services/lily_core_client.py
+          grep -q 'discord_adapter.addons' addon-quiz/pyproject.toml
+          grep -q 'quiz.question_sets' addon-gtnh/pyproject.toml
+
+          rm -rf deploy-context
+          mkdir -p deploy-context
+          cp -a source deploy-context/source
+          cp -a addon-quiz deploy-context/quiz
+          cp -a addon-gtnh deploy-context/gtnh-quiz-data
+          find deploy-context -name .git -type d -prune -exec rm -rf {} +
+
+          python - <<'PY'
+          from pathlib import Path
+          src = Path('source/Dockerfile').read_text()
+          old_req = 'COPY requirements.txt .'
+          old_src = 'COPY --chown=lily:lily . /app/Lily-Discord-Adapter'
+          if old_req not in src or old_src not in src:
+              raise SystemExit('Discord Adapter Dockerfile contract changed')
+          src = src.replace(old_req, 'COPY source/requirements.txt .', 1)
+          src = src.replace(old_src, 'COPY --chown=lily:lily source /app/Lily-Discord-Adapter', 1)
+          Path('deploy-context/Dockerfile').write_text(src)
+          PY
+
+          cat >> deploy-context/Dockerfile <<'DOCKERFILE'
+
+          # Compose the independently packaged quiz addons into the release image.
+          COPY quiz /opt/addons/quiz
+          COPY gtnh-quiz-data /opt/addons/gtnh-quiz-data
+          RUN --mount=type=cache,target=/root/.cache/pip \
+              pip install /opt/addons/quiz /opt/addons/gtnh-quiz-data && \
+              rm -rf /opt/addons
+          DOCKERFILE
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build exact composite image
+        uses: docker/build-push-action@v6
+        with:
+          context: deploy-context
+          platforms: ${{ steps.platform.outputs.value }}
+          push: false
+          load: true
+          tags: lily-discord-adapter:deploy-candidate
+          cache-from: type=gha,scope=lily-discord-adapter-public-fallback
+          cache-to: type=gha,mode=max,scope=lily-discord-adapter-public-fallback
+
+      - name: Validate composite image
+        run: |
+          set -euo pipefail
+          docker run --rm -i -e QUIZ_QUESTION_SETS=gtnh lily-discord-adapter:deploy-candidate python - <<'PY'
+          from importlib.metadata import entry_points
+          from quiz_discord_addon.catalog import QuizCatalog
+          assert any(ep.name == 'quiz' for ep in entry_points().select(group='discord_adapter.addons'))
+          assert any(ep.name == 'gtnh' for ep in entry_points().select(group='quiz.question_sets'))
+          catalog = QuizCatalog.discover()
+          assert not catalog.failures, catalog.failures
+          assert len(catalog.get('gtnh').questions) == 200
+          PY
+          docker run --rm lily-discord-adapter:deploy-candidate python -m compileall -q .
+          docker run --rm lily-discord-adapter:deploy-candidate pytest tests/ -q
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ steps.kv.outputs.DOCKER_USER }}
+          password: ${{ steps.kv.outputs.DOCKER_TOKEN }}
+
+      - name: Publish immutable composite image
+        env:
+          RELEASE_SHA: ${{ steps.state.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          docker tag lily-discord-adapter:deploy-candidate "$IMAGE_REPO:$RELEASE_SHA"
+          docker tag lily-discord-adapter:deploy-candidate "$IMAGE_REPO:latest"
+          docker push "$IMAGE_REPO:$RELEASE_SHA"
+          docker push "$IMAGE_REPO:latest"
+
+      - name: Deploy and verify hardened runtime
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          RELEASE_SHA: ${{ steps.state.outputs.release_sha }}
+          SOURCE_SHA: ${{ steps.state.outputs.source_sha }}
+          IMAGE_REPO: ${{ env.IMAGE_REPO }}
+          DOMAIN_NAME: ${{ steps.kv.outputs.DOMAIN_NAME }}
+          LILYIV_SHA: ${{ github.sha }}
+        with:
+          host: ${{ steps.kv.outputs.VPS_HOST }}
+          username: ${{ steps.kv.outputs.VPS_USER }}
+          password: ${{ steps.kv.outputs.VPS_PASS }}
+          port: 22
+          timeout: 120s
+          command_timeout: 900s
+          envs: RELEASE_SHA,SOURCE_SHA,IMAGE_REPO,DOMAIN_NAME,LILYIV_SHA
+          script: |
+            set -euo pipefail
+            if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; $SUDO true; fi
+            cd /root/LilyIV
+
+            # Reassert the exact hardened Compose before touching the container.
+            TMP_COMPOSE=$(mktemp)
+            curl -fsSL "https://raw.githubusercontent.com/UpperMoon0/LilyIV/${LILYIV_SHA}/docker-compose.prod.yml" -o "$TMP_COMPOSE"
+            grep -q 'user: "10001:10001"' "$TMP_COMPOSE"
+            grep -q 'DISCORD_CHAT_GUILD_IDS=736926591246008350' "$TMP_COMPOSE"
+            $SUDO install -m 0644 "$TMP_COMPOSE" /root/LilyIV/docker-compose.prod.yml
+            rm -f "$TMP_COMPOSE"
+
+            ensure_network() {
+              if ! $SUDO docker network inspect "$1" >/dev/null 2>&1; then
+                if [ "$2" = internal ]; then
+                  $SUDO docker network create --driver bridge --internal "$1" >/dev/null
+                else
+                  $SUDO docker network create --driver bridge "$1" >/dev/null
+                fi
+              fi
+            }
+            ensure_network lily-discord-internal internal
+            ensure_network lily-discord-proxy proxy
+            $SUDO docker network connect lily-discord-internal redis 2>/dev/null || true
+            $SUDO docker network connect lily-discord-proxy traefik 2>/dev/null || true
+
+            DATA_VOLUME=lily_lily-discord-adapter-data
+            $SUDO docker volume create "$DATA_VOLUME" >/dev/null
+            DATA_MOUNT=$($SUDO docker volume inspect -f '{{.Mountpoint}}' "$DATA_VOLUME")
+            $SUDO chown -R 10001:10001 "$DATA_MOUNT"
+            $SUDO chmod 0700 "$DATA_MOUNT"
+
+            PREVIOUS_IMAGE_ID=$($SUDO docker inspect --format '{{.Image}}' lily-discord-adapter 2>/dev/null || true)
+            rollback() {
+              rc=$?
+              if [ "$rc" -ne 0 ] && [ -n "$PREVIOUS_IMAGE_ID" ]; then
+                echo 'Adapter deployment failed; restoring previous image.' >&2
+                $SUDO docker tag "$PREVIOUS_IMAGE_ID" "$IMAGE_REPO:latest" || true
+                $SUDO docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate lily-discord-adapter || true
+                $SUDO docker logs --tail 100 lily-discord-adapter >&2 || true
+              fi
+              exit "$rc"
+            }
+            trap rollback EXIT
+
+            $SUDO docker pull "$IMAGE_REPO:$RELEASE_SHA"
+            $SUDO docker tag "$IMAGE_REPO:$RELEASE_SHA" "$IMAGE_REPO:latest"
+            $SUDO docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate lily-discord-adapter
+
+            READY=0
+            for i in $(seq 1 60); do
+              BODY=$(curl -fsS http://127.0.0.1:8004/health 2>/dev/null || true)
+              if printf '%s' "$BODY" | grep -q '"bot_ready":true' && \
+                 printf '%s' "$BODY" | grep -q '"mcp_auth_mode":"oauth"' && \
+                 printf '%s' "$BODY" | grep -q '"mcp_policy_store_ready":true' && \
+                 printf '%s' "$BODY" | grep -q '"loaded":\["quiz"\]'; then
+                READY=1; break
+              fi
+              sleep 2
+            done
+            [ "$READY" = 1 ]
+
+            [ "$($SUDO docker exec lily-discord-adapter id -u)" = 10001 ]
+            [ "$($SUDO docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' lily-discord-adapter)" = true ]
+            NETWORKS=$($SUDO docker inspect -f '{{json .NetworkSettings.Networks}}' lily-discord-adapter)
+            printf '%s' "$NETWORKS" | grep -q '"lily-discord-internal"'
+            printf '%s' "$NETWORKS" | grep -q '"lily-discord-proxy"'
+            ! printf '%s' "$NETWORKS" | grep -q '"nstut-network"'
+
+            for PATH in /api/cookies /api/cookies/download /api/bot/status /docs /openapi.json; do
+              CODE=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:8004$PATH")
+              [ "$CODE" = 404 ]
+            done
+
+            STATUS=$(curl -ksS -o /dev/null -w '%{http_code}' \
+              --resolve "lily-discord-adapter.${DOMAIN_NAME}:443:127.0.0.1" \
+              "https://lily-discord-adapter.${DOMAIN_NAME}/mcp/" || true)
+            [ "$STATUS" = 401 ] || [ "$STATUS" = 405 ]
+
+            MARKER_DIR=/var/lib/nstut-cicd/lily-discord-adapter
+            $SUDO mkdir -p "$MARKER_DIR"
+            printf '%s\n' "$RELEASE_SHA" | $SUDO tee "$MARKER_DIR/deployed-sha" >/dev/null
+            printf '%s\n' "$SOURCE_SHA" | $SUDO tee "$MARKER_DIR/deployed-source-sha" >/dev/null
+            $SUDO chmod 600 "$MARKER_DIR/deployed-sha" "$MARKER_DIR/deployed-source-sha"
+
+            trap - EXIT
+            echo "Hardened Discord Adapter $SOURCE_SHA deployed successfully"
