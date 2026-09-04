@@ -1,21 +1,24 @@
 # Docker Compose for Lily-Core and Lily-Discord-Adapter (Production)
-# Uses external nstut-network for connectivity
-# Pulls images from Docker Hub instead of building locally
 name: lily
 
 services:
-  # Lily-Core Application - Main chatbot service (C++)
+  # Lily-Core is an internal service. Localhost remains available for VPS
+  # diagnostics, while remote callers must go through an explicitly trusted
+  # internal Docker network.
   lily-core:
     image: nstut/lily-core:latest
     container_name: lily-core
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - lily-core-data:/app/data
     networks:
       nstut-network:
         ipv4_address: 172.18.0.10
+      lily-discord-internal:
+        aliases:
+          - lily-core
     environment:
       - LOG_LEVEL=INFO
     env_file:
@@ -24,41 +27,46 @@ services:
       consul:
         condition: service_healthy
     labels:
-      - "traefik.enable=true"
-      
-      # HTTP Service definition (port 8000)
-      - "traefik.http.services.lily-core-http.loadbalancer.server.port=8000"
-      
-      # HTTP API router (port 8000)
-      - "traefik.http.routers.lily-core.rule=Host(`lily-core.nstut.cloud`)"
-      - "traefik.http.routers.lily-core.entrypoints=websecure"
-      - "traefik.http.routers.lily-core.tls.certresolver=myresolver"
-      - "traefik.http.routers.lily-core.service=lily-core-http"
-      
-      # WebSocket router (port 8000 via /ws prefix)
-      - "traefik.http.routers.lily-core-ws.rule=Host(`lily-core.nstut.cloud`) && PathPrefix(`/ws`)"
-      - "traefik.http.routers.lily-core-ws.priority=100"
-      - "traefik.http.routers.lily-core-ws.entrypoints=websecure"
-      - "traefik.http.routers.lily-core-ws.tls.certresolver=myresolver"
-      - "traefik.http.routers.lily-core-ws.service=lily-core-http"
+      - "traefik.enable=false"
 
-  # Lily-Discord-Adapter - Discord bot adapter for Lily-Core
+  # Lily-Discord-Adapter has two narrowly scoped networks:
+  # - lily-discord-internal: Redis/Consul/Lily-Core only
+  # - lily-discord-proxy: Traefik ingress and normal Internet egress
+  # It is deliberately not attached to the flat nstut-network.
   lily-discord-adapter:
     image: nstut/lily-discord-adapter:latest
     container_name: lily-discord-adapter
     restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    tmpfs:
+      - /tmp:size=64m,mode=1777
     ports:
-      - "8004:8004"
+      - "127.0.0.1:8004:8004"
     env_file:
       - ./Lily-Discord-Adapter/.env
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - HOME=/tmp
+      - XDG_CACHE_HOME=/tmp/.cache
       - PORT=8004
+      - LILY_CORE_HTTP_URL=http://lily-core:8000/api
     volumes:
       - lily-discord-adapter-data:/app/data
     networks:
-      nstut-network:
-        ipv4_address: 172.18.0.20
+      lily-discord-internal:
+        aliases:
+          - lily-discord-adapter
+      lily-discord-proxy:
+        aliases:
+          - lily-discord-adapter
     depends_on:
       lily-core:
         condition: service_started
@@ -66,9 +74,8 @@ services:
         condition: service_healthy
     labels:
       - "traefik.enable=true"
-      # Service definition
+      - "traefik.docker.network=lily-discord-proxy"
       - "traefik.http.services.lily-discord-adapter.loadbalancer.server.port=8004"
-      # HTTP API router
       - "traefik.http.routers.lily-discord-adapter.rule=Host(`lily-discord-adapter.nstut.cloud`)"
       - "traefik.http.routers.lily-discord-adapter.entrypoints=websecure"
       - "traefik.http.routers.lily-discord-adapter.tls.certresolver=myresolver"
@@ -95,25 +102,27 @@ services:
         condition: service_healthy
     labels:
       - "traefik.enable=true"
-      # Service definition
       - "traefik.http.services.web-scout.loadbalancer.server.port=8000"
-      # HTTP API router
       - "traefik.http.routers.web-scout.rule=Host(`web-scout.nstut.cloud`)"
       - "traefik.http.routers.web-scout.entrypoints=websecure"
       - "traefik.http.routers.web-scout.tls.certresolver=myresolver"
       - "traefik.http.routers.web-scout.service=web-scout"
 
-  # Consul - Service Registry
+  # Consul is an internal service registry. The dev-mode API is never suitable
+  # for unauthenticated Internet exposure.
   consul:
     image: hashicorp/consul:latest
     container_name: consul
     restart: unless-stopped
     ports:
-      - "8500:8500"
-      - "8600:8600/udp"
+      - "127.0.0.1:8500:8500"
+      - "127.0.0.1:8600:8600/udp"
     networks:
       nstut-network:
         ipv4_address: 172.18.0.100
+      lily-discord-internal:
+        aliases:
+          - consul
     command: "agent -dev -client '0.0.0.0' -ui"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8500/v1/status/leader"]
@@ -122,23 +131,17 @@ services:
       retries: 5
       start_period: 10s
     labels:
-      - "traefik.enable=true"
-      # HTTP API (port 8500)
-      - "traefik.http.routers.consul-api.rule=Host(`consul-api.nstut.cloud`)"
-      - "traefik.http.routers.consul-api.entrypoints=websecure"
-      - "traefik.http.routers.consul-api.tls.certresolver=myresolver"
-      - "traefik.http.routers.consul-api.service=consul-api"
-      - "traefik.http.services.consul-api.loadbalancer.server.port=8500"
-      # UI Dashboard (port 8500 - same port, different router)
-      - "traefik.http.routers.consul-ui.rule=Host(`consul.nstut.cloud`)"
-      - "traefik.http.routers.consul-ui.entrypoints=websecure"
-      - "traefik.http.routers.consul-ui.tls.certresolver=myresolver"
-      - "traefik.http.routers.consul-ui.service=consul-ui"
-      - "traefik.http.services.consul-ui.loadbalancer.server.port=8500"
+      - "traefik.enable=false"
 
 networks:
   nstut-network:
     name: nstut-network
+    external: true
+  lily-discord-internal:
+    name: lily-discord-internal
+    external: true
+  lily-discord-proxy:
+    name: lily-discord-proxy
     external: true
 
 volumes:
