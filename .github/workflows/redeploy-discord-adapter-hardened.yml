@@ -1,0 +1,202 @@
+name: Redeploy Hardened Discord Adapter
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/redeploy-discord-adapter-hardened.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lily-compose-production
+  cancel-in-progress: false
+
+env:
+  KEY_VAULT: nstutcommonkv
+  IMAGE_REPO: nstut/lily-discord-adapter
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Fetch VPS credentials
+        id: kv
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            set -euo pipefail
+            VPS_HOST=$(az keyvault secret show --vault-name "$KEY_VAULT" --name vps-host --query value -o tsv)
+            VPS_USER=$(az keyvault secret show --vault-name "$KEY_VAULT" --name vps-username --query value -o tsv)
+            VPS_PASS=$(az keyvault secret show --vault-name "$KEY_VAULT" --name vps-password --query value -o tsv)
+            DOMAIN_NAME=$(az keyvault secret show --vault-name "$KEY_VAULT" --name domain-name --query value -o tsv)
+            for VALUE in "$VPS_HOST" "$VPS_USER" "$VPS_PASS" "$DOMAIN_NAME"; do
+              echo "::add-mask::$VALUE"
+            done
+            echo "VPS_HOST=$VPS_HOST" >> "$GITHUB_OUTPUT"
+            echo "VPS_USER=$VPS_USER" >> "$GITHUB_OUTPUT"
+            echo "VPS_PASS=$VPS_PASS" >> "$GITHUB_OUTPUT"
+            echo "DOMAIN_NAME=$DOMAIN_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Pull, redeploy, and verify
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          IMAGE_REPO: ${{ env.IMAGE_REPO }}
+          DOMAIN_NAME: ${{ steps.kv.outputs.DOMAIN_NAME }}
+          LILYIV_SHA: ${{ github.sha }}
+        with:
+          host: ${{ steps.kv.outputs.VPS_HOST }}
+          username: ${{ steps.kv.outputs.VPS_USER }}
+          password: ${{ steps.kv.outputs.VPS_PASS }}
+          port: 22
+          timeout: 120s
+          command_timeout: 720s
+          envs: IMAGE_REPO,DOMAIN_NAME,LILYIV_SHA
+          script: |
+            set -euo pipefail
+            if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; $SUDO true; fi
+            cd /root/LilyIV
+
+            echo '== install exact hardened compose =='
+            TMP=$(mktemp)
+            curl -fsSL "https://raw.githubusercontent.com/UpperMoon0/LilyIV/${LILYIV_SHA}/docker-compose.prod.yml" -o "$TMP"
+            grep -q 'user: "10001:10001"' "$TMP"
+            grep -q 'read_only: true' "$TMP"
+            grep -q 'DISCORD_CHAT_GUILD_IDS=736926591246008350' "$TMP"
+            grep -q 'LILY_CORE_HTTP_URL=http://lily-core:8000/api' "$TMP"
+            $SUDO install -m 0644 "$TMP" docker-compose.prod.yml
+            rm -f "$TMP"
+
+            echo '== ensure narrow networks =='
+            ensure_network() {
+              if ! $SUDO docker network inspect "$1" >/dev/null 2>&1; then
+                if [ "$2" = internal ]; then
+                  $SUDO docker network create --driver bridge --internal "$1" >/dev/null
+                else
+                  $SUDO docker network create --driver bridge "$1" >/dev/null
+                fi
+              fi
+            }
+            ensure_network lily-discord-internal internal
+            ensure_network lily-discord-proxy proxy
+            $SUDO docker network connect lily-discord-internal redis 2>/dev/null || true
+            $SUDO docker network connect lily-discord-proxy traefik 2>/dev/null || true
+
+            echo '== pull and attest published image =='
+            $SUDO docker pull "$IMAGE_REPO:latest"
+            $SUDO docker run --rm --entrypoint sh "$IMAGE_REPO:latest" -c '
+              set -eu
+              cd /app/Lily-Discord-Adapter
+              grep -q DISCORD_CHAT_GUILD_IDS controllers/message_controller.py
+              grep -q LILY_CORE_HTTP_URL services/lily_core_client.py
+              grep -q validate_youtube_url services/music_service.py
+              test ! -e controllers/cookies_controller.py
+              test ! -e services/cookies_service.py
+            '
+            echo 'image security attestation: PASS'
+
+            echo '== prepare persistent volume for uid 10001 =='
+            DATA_VOLUME=lily_lily-discord-adapter-data
+            $SUDO docker volume create "$DATA_VOLUME" >/dev/null
+            DATA_MOUNT=$($SUDO docker volume inspect -f '{{.Mountpoint}}' "$DATA_VOLUME")
+            $SUDO chown -R 10001:10001 "$DATA_MOUNT"
+            $SUDO chmod 0700 "$DATA_MOUNT"
+
+            PREVIOUS_IMAGE_ID=$($SUDO docker inspect --format '{{.Image}}' lily-discord-adapter 2>/dev/null || true)
+            rollback() {
+              rc=$?
+              if [ "$rc" -ne 0 ]; then
+                echo "redeploy failed with rc=$rc" >&2
+                echo '== failed container state ==' >&2
+                $SUDO docker ps -a --filter name=lily-discord-adapter --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' >&2 || true
+                echo '== failed container logs ==' >&2
+                $SUDO docker logs --tail 160 lily-discord-adapter >&2 || true
+                if [ -n "$PREVIOUS_IMAGE_ID" ]; then
+                  echo '== rollback previous image ==' >&2
+                  $SUDO docker tag "$PREVIOUS_IMAGE_ID" "$IMAGE_REPO:latest" || true
+                  $SUDO docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate lily-discord-adapter || true
+                fi
+              fi
+              exit "$rc"
+            }
+            trap rollback EXIT
+
+            echo '== recreate Adapter =='
+            $SUDO docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate lily-discord-adapter
+
+            echo '== wait for HTTP health =='
+            BODY=''
+            for i in $(seq 1 60); do
+              BODY=$(curl -fsS http://127.0.0.1:8004/health 2>/dev/null || true)
+              [ -n "$BODY" ] && break
+              sleep 2
+            done
+            if [ -z "$BODY" ]; then
+              echo 'health endpoint never became reachable' >&2
+              exit 20
+            fi
+            printf 'health=%s\n' "$BODY"
+
+            echo '== health invariants =='
+            printf '%s' "$BODY" | grep -q '"mcp_auth_mode":"oauth"' || { echo 'mcp auth mode is not oauth' >&2; exit 21; }
+            printf '%s' "$BODY" | grep -q '"mcp_policy_store_ready":true' || { echo 'MCP Redis policy store is not ready' >&2; exit 22; }
+            printf '%s' "$BODY" | grep -q '"loaded":\["quiz"\]' || { echo 'quiz addon is not loaded' >&2; exit 23; }
+            printf '%s' "$BODY" | grep -q '"bot_ready":true' || { echo 'Discord bot is not ready' >&2; exit 24; }
+            echo 'health invariants: PASS'
+
+            echo '== runtime isolation invariants =='
+            UID_ACTUAL=$($SUDO docker exec lily-discord-adapter id -u)
+            RO_ACTUAL=$($SUDO docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' lily-discord-adapter)
+            NETWORKS=$($SUDO docker inspect -f '{{json .NetworkSettings.Networks}}' lily-discord-adapter)
+            echo "uid=$UID_ACTUAL"
+            echo "readonly_rootfs=$RO_ACTUAL"
+            echo "networks=$NETWORKS"
+            [ "$UID_ACTUAL" = 10001 ] || { echo 'unexpected runtime uid' >&2; exit 25; }
+            [ "$RO_ACTUAL" = true ] || { echo 'root filesystem is not read-only' >&2; exit 26; }
+            printf '%s' "$NETWORKS" | grep -q '"lily-discord-internal"' || { echo 'missing internal network' >&2; exit 27; }
+            printf '%s' "$NETWORKS" | grep -q '"lily-discord-proxy"' || { echo 'missing proxy network' >&2; exit 28; }
+            if printf '%s' "$NETWORKS" | grep -q '"nstut-network"'; then echo 'adapter still on flat nstut-network' >&2; exit 29; fi
+            echo 'runtime isolation: PASS'
+
+            echo '== removed legacy routes =='
+            for PATH in /api/cookies /api/cookies/download /api/bot/status /docs /openapi.json; do
+              CODE=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:8004$PATH")
+              echo "$PATH -> $CODE"
+              [ "$CODE" = 404 ] || { echo "legacy route unexpectedly reachable: $PATH" >&2; exit 30; }
+            done
+            echo 'legacy route removal: PASS'
+
+            echo '== private dependency reachability from Adapter =='
+            $SUDO docker exec lily-discord-adapter python - <<'PY'
+            import urllib.request
+            for url in ('http://lily-core:8000/health', 'http://consul:8500/v1/status/leader'):
+                with urllib.request.urlopen(url, timeout=5) as response:
+                    assert response.status == 200, (url, response.status)
+                print(url, 'PASS')
+            PY
+
+            echo '== public MCP ingress =='
+            STATUS=$(curl -ksS -o /dev/null -w '%{http_code}' \
+              --resolve "lily-discord-adapter.${DOMAIN_NAME}:443:127.0.0.1" \
+              "https://lily-discord-adapter.${DOMAIN_NAME}/mcp/" || true)
+            echo "unauthenticated /mcp/ -> $STATUS"
+            case "$STATUS" in
+              400|401|403|405|406) ;;
+              *) echo 'MCP ingress is not reachable/auth-protected as expected' >&2; exit 31 ;;
+            esac
+
+            echo '== host exposure checks =='
+            BIND8004=$($SUDO docker port lily-discord-adapter 8004/tcp || true)
+            echo "adapter_port=$BIND8004"
+            printf '%s' "$BIND8004" | grep -q '^127\.0\.0\.1:' || { echo 'Adapter host port is not loopback-only' >&2; exit 32; }
+
+            trap - EXIT
+            echo 'HARDENED_DISCORD_ADAPTER_DEPLOYMENT_PASS'
