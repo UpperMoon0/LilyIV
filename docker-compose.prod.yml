@@ -36,6 +36,7 @@ services:
   lily-discord-adapter:
     image: nstut/lily-discord-adapter:latest
     container_name: lily-discord-adapter
+    hostname: lily-discord-adapter
     restart: unless-stopped
     init: true
     user: "10001:10001"
@@ -57,6 +58,7 @@ services:
       - HOME=/tmp
       - XDG_CACHE_HOME=/tmp/.cache
       - PORT=8004
+      - CONSUL_HTTP_ADDR=consul:8500
       - LILY_CORE_HTTP_URL=http://lily-core:8000/api
       # Only the private Variables in the World guild may bridge chat into
       # Lily-Core. NsTut remains fully controllable through authenticated MCP.
