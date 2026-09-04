@@ -58,6 +58,9 @@ services:
       - XDG_CACHE_HOME=/tmp/.cache
       - PORT=8004
       - LILY_CORE_HTTP_URL=http://lily-core:8000/api
+      # Only the private Variables in the World guild may bridge chat into
+      # Lily-Core. NsTut remains fully controllable through authenticated MCP.
+      - DISCORD_CHAT_GUILD_IDS=736926591246008350
     volumes:
       - lily-discord-adapter-data:/app/data
     networks:
