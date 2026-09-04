@@ -11,8 +11,10 @@ on:
 permissions:
   contents: read
 
+# Share the production Compose lock with sync-compose.yml. Both workflows mutate
+# the same containers and must never run docker compose concurrently.
 concurrency:
-  group: lily-security-compose-production
+  group: lily-compose-production
   cancel-in-progress: false
 
 jobs:
@@ -78,7 +80,6 @@ jobs:
               "https://raw.githubusercontent.com/UpperMoon0/LilyIV/${COMPOSE_SHA}/docker-compose.prod.yml" \
               -o "$TMP"
 
-            # Refuse to deploy a compose file that lost any required boundary.
             grep -q '127.0.0.1:8004:8004' "$TMP"
             grep -q 'user: "10001:10001"' "$TMP"
             grep -q 'read_only: true' "$TMP"
@@ -117,8 +118,6 @@ jobs:
             connect_if_needed lily-discord-internal redis
             connect_if_needed lily-discord-proxy traefik
 
-            # The named volume already contains OAuth state/cookies from the old
-            # root container. Make it writable by the new unprivileged runtime.
             DATA_VOLUME=lily_lily-discord-adapter-data
             $SUDO docker volume create "$DATA_VOLUME" >/dev/null
             DATA_MOUNT=$($SUDO docker volume inspect -f '{{.Mountpoint}}' "$DATA_VOLUME")
@@ -141,8 +140,6 @@ jobs:
             }
             trap rollback EXIT
 
-            # Recreate internal control services so their public Traefik labels
-            # and all-interface port bindings disappear immediately.
             $SUDO docker compose -f "$COMPOSE" up -d --no-deps --force-recreate consul
             for i in $(seq 1 30); do
               if $SUDO docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' consul | grep -q '^healthy$'; then
@@ -173,7 +170,6 @@ jobs:
             BODY=$(curl -fsS http://127.0.0.1:8004/health)
             printf '%s' "$BODY" | grep -q '"mcp_policy_store_ready":true'
 
-            # Runtime assertions: unprivileged, read-only, no broad network.
             [ "$($SUDO docker exec lily-discord-adapter id -u)" = "10001" ]
             [ "$($SUDO docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' lily-discord-adapter)" = "true" ]
             NETWORKS=$($SUDO docker inspect -f '{{json .NetworkSettings.Networks}}' lily-discord-adapter)
@@ -184,8 +180,6 @@ jobs:
               exit 1
             fi
 
-            # Traefik must still be able to reach authenticated MCP after the
-            # network split.
             for i in $(seq 1 30); do
               STATUS=$(curl -ksS -o /dev/null -w '%{http_code}' \
                 --resolve "lily-discord-adapter.${DOMAIN_NAME}:443:127.0.0.1" \
